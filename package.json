@@ -1,0 +1,23 @@
+{
+  "name": "uno-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "bun run --parallel dev:server dev:client",
+    "dev:server": "bun --filter @uno/server dev",
+    "dev:client": "bun --filter @uno/client dev",
+    "build": "bun --filter @uno/client build",
+    "test": "bun test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "start": "bun run build && PORT=${PORT:-3000} bun --filter @uno/server start"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
