@@ -6,87 +6,28 @@ import {
   type GameState,
   MAX_PLAYERS,
   MIN_PLAYERS,
-  NAME_MAX_LENGTH,
-  ROOM_CODE_LENGTH,
-  CLOSE_INVALID_SESSION,
   CLOSE_REMOVED,
   type ClientMessage,
   type RoomStatus,
   type RoomView,
-  type Rules,
-  type ServerMessage,
-  type Session,
   applyAction,
   roundPoints,
   startRound,
   suggestAction,
   viewFor,
-} from '@uno/shared';
+} from "@uno/shared";
+import { config } from "../config";
+import {
+  type PlayerRecord,
+  type Room,
+  RoomError,
+  type Sender,
+  normalizeRules,
+  randomCode,
+  validateName,
+} from "./types";
 
-/** How long a disconnected player may hold up their turn before the server plays for them. */
-export const AUTO_PLAY_DELAY_MS = 20_000;
-/** Empty rooms are forgotten after this much inactivity. */
-const ROOM_IDLE_MS = 15 * 60_000;
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alikes (I, O, 0, 1)
-
-/** Anything that can receive server messages (a WebSocket in production, a stub in tests). */
-export interface Sender {
-  send(message: ServerMessage): unknown;
-  close?(code: number, reason: string): unknown;
-}
-
-
-export class RoomError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'RoomError';
-  }
-}
-
-interface PlayerRecord {
-  id: string;
-  name: string;
-  token: string;
-  score: number;
-  socket: Sender | null;
-}
-
-interface Room {
-  code: string;
-  hostId: string;
-  rules: Rules;
-  cardsPerPlayer: number;
-  players: PlayerRecord[];
-  game: GameState | null;
-  lastRoundPoints: number | null;
-  gameWinnerId: string | null;
-  lastActive: number;
-  autoTimer: ReturnType<typeof setTimeout> | null;
-}
-
-/** Normalises a display name for uniqueness checks ("  Ann " and "ann" collide). */
-export function normalizeName(name: string): string {
-  return name.trim().replace(/\s+/g, ' ');
-}
-
-function validateName(raw: string): string {
-  const name = normalizeName(raw);
-  if (name.length < 1) throw new RoomError(400, 'Name is required');
-  if (name.length > NAME_MAX_LENGTH) throw new RoomError(400, `Name must be ${NAME_MAX_LENGTH} characters or fewer`);
-  if (/[\u0000-\u001f]/.test(name)) throw new RoomError(400, 'Name contains invalid characters');
-  return name;
-}
-
-function randomCode(): string {
-  let code = '';
-  for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  }
-  return code;
-}
+export { RoomError, type Sender, type Room, type PlayerRecord };
 
 export class RoomManager {
   private rooms = new Map<string, Room>();
@@ -99,7 +40,11 @@ export class RoomManager {
 
   /* ----------------------------- REST operations ---------------------------- */
 
-  createRoom(rawName: string): Session {
+  createRoom(rawName: string): {
+    code: string;
+    playerId: string;
+    token: string;
+  } {
     const name = validateName(rawName);
     let code = randomCode();
     while (this.rooms.has(code)) code = randomCode();
@@ -121,20 +66,38 @@ export class RoomManager {
     return { code, playerId: player.id, token: player.token };
   }
 
-  roomExists(code: string): { code: string; status: RoomStatus; playerCount: number } {
+  roomExists(code: string): {
+    code: string;
+    status: RoomStatus;
+    playerCount: number;
+  } {
     const room = this.getRoom(code);
-    return { code: room.code, status: this.statusOf(room), playerCount: room.players.length };
+    return {
+      code: room.code,
+      status: this.statusOf(room),
+      playerCount: room.players.length,
+    };
   }
 
-  joinRoom(code: string, rawName: string): Session {
+  joinRoom(
+    code: string,
+    rawName: string,
+  ): { code: string; playerId: string; token: string } {
     const room = this.getRoom(code);
     const name = validateName(rawName);
-    if (room.players.length >= MAX_PLAYERS) throw new RoomError(409, 'This room is full');
-    if (this.statusOf(room) !== 'lobby') {
-      throw new RoomError(409, 'A game is already in progress in this room');
+    if (room.players.length >= MAX_PLAYERS)
+      throw new RoomError(409, "This room is full");
+    if (this.statusOf(room) !== "lobby") {
+      throw new RoomError(409, "A game is already in progress in this room");
     }
-    const taken = room.players.some((p) => p.name.toLowerCase() === name.toLowerCase());
-    if (taken) throw new RoomError(409, `The name "${name}" is already taken in this room`);
+    const taken = room.players.some(
+      (p) => p.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (taken)
+      throw new RoomError(
+        409,
+        `The name "${name}" is already taken in this room`,
+      );
 
     const player = this.newPlayer(name);
     room.players.push(player);
@@ -149,7 +112,7 @@ export class RoomManager {
   attach(code: string, token: string, socket: Sender): string {
     const room = this.getRoom(code);
     const player = room.players.find((p) => p.token === token);
-    if (!player) throw new RoomError(401, 'Unknown session for this room');
+    if (!player) throw new RoomError(401, "Unknown session for this room");
     player.socket = socket;
     this.touch(room);
     this.broadcast(room);
@@ -178,12 +141,16 @@ export class RoomManager {
       this.touch(room);
       this.broadcast(room);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Something went wrong';
+      const messageText =
+        err instanceof Error ? err.message : "Something went wrong";
       if (err instanceof GameError || err instanceof RoomError) {
-        player.socket?.send({ type: 'error', message });
+        player.socket?.send({ type: "error", message: messageText });
       } else {
         console.error(err);
-        player.socket?.send({ type: 'error', message: 'Internal server error' });
+        player.socket?.send({
+          type: "error",
+          message: "Internal server error",
+        });
       }
     }
   }
@@ -201,24 +168,35 @@ export class RoomManager {
 
   /* -------------------------------- Internals ------------------------------- */
 
-  private dispatch(room: Room, player: PlayerRecord, message: ClientMessage): void {
+  private dispatch(
+    room: Room,
+    player: PlayerRecord,
+    message: ClientMessage,
+  ): void {
     const isHost = player.id === room.hostId;
     switch (message.type) {
-      case 'settings': {
-        if (!isHost) throw new RoomError(403, 'Only the host can change settings');
-        if (room.game && !room.game.winnerId) throw new RoomError(409, 'Settings can be changed between rounds');
+      case "settings": {
+        if (!isHost)
+          throw new RoomError(403, "Only the host can change settings");
+        if (room.game && !room.game.winnerId)
+          throw new RoomError(409, "Settings can be changed between rounds");
         room.rules = normalizeRules({ ...room.rules, ...message.rules });
         return;
       }
 
-      case 'start': {
-        if (!isHost) throw new RoomError(403, 'Only the host can start the game');
+      case "start": {
+        if (!isHost)
+          throw new RoomError(403, "Only the host can start the game");
         const status = this.statusOf(room);
-        if (status === 'playing' || status === 'roundOver') {
-          throw new RoomError(409, 'A game is already in progress');
+        if (status === "playing" || status === "roundOver") {
+          throw new RoomError(409, "A game is already in progress");
         }
         const playerCount = room.players.length;
-        if (playerCount < MIN_PLAYERS) throw new RoomError(409, `At least ${MIN_PLAYERS} players are needed`);
+        if (playerCount < MIN_PLAYERS)
+          throw new RoomError(
+            409,
+            `At least ${MIN_PLAYERS} players are needed`,
+          );
         // Shuffle and deal first: an invalid card count throws before any state is changed.
         const game = this.deal(room, message.cardsPerPlayer);
         room.cardsPerPlayer = message.cardsPerPlayer;
@@ -229,34 +207,42 @@ export class RoomManager {
         return;
       }
 
-      case 'nextRound': {
-        if (!isHost) throw new RoomError(403, 'Only the host can start the next round');
-        if (this.statusOf(room) !== 'roundOver') throw new RoomError(409, 'The round is not over yet');
+      case "nextRound": {
+        if (!isHost)
+          throw new RoomError(403, "Only the host can start the next round");
+        if (this.statusOf(room) !== "roundOver")
+          throw new RoomError(409, "The round is not over yet");
         room.game = this.deal(room, room.cardsPerPlayer);
         room.lastRoundPoints = null;
         return;
       }
 
-      case 'kick': {
-        if (!isHost) throw new RoomError(403, 'Only the host can remove players');
-        if (this.statusOf(room) !== 'lobby') throw new RoomError(409, 'Players can only be removed in the lobby');
-        if (message.playerId === room.hostId) throw new RoomError(400, 'The host cannot be removed');
+      case "kick": {
+        if (!isHost)
+          throw new RoomError(403, "Only the host can remove players");
+        if (this.statusOf(room) !== "lobby")
+          throw new RoomError(409, "Players can only be removed in the lobby");
+        if (message.playerId === room.hostId)
+          throw new RoomError(400, "The host cannot be removed");
         const target = room.players.find((p) => p.id === message.playerId);
-        if (!target) throw new RoomError(404, 'Player not found');
-        this.removePlayer(room, target, 'You were removed from the room');
+        if (!target) throw new RoomError(404, "Player not found");
+        this.removePlayer(room, target, "You were removed from the room");
         return;
       }
 
-      case 'leave': {
-        if (this.statusOf(room) !== 'lobby') {
-          throw new RoomError(409, 'You cannot leave a game in progress; the server will play your turns');
+      case "leave": {
+        if (this.statusOf(room) !== "lobby") {
+          throw new RoomError(
+            409,
+            "You cannot leave a game in progress; the server will play your turns",
+          );
         }
         this.removePlayer(room, player, null);
         return;
       }
 
-      case 'action': {
-        if (!room.game) throw new RoomError(409, 'No game in progress');
+      case "action": {
+        if (!room.game) throw new RoomError(409, "No game in progress");
         const before = room.game;
         const next = applyAction(before, player.id, message.action as Action);
         room.game = next;
@@ -278,10 +264,14 @@ export class RoomManager {
   }
 
   /** Removes a player from a lobby. Transfers host if needed and deletes the room when it empties. */
-  private removePlayer(room: Room, target: PlayerRecord, notice: string | null): void {
+  private removePlayer(
+    room: Room,
+    target: PlayerRecord,
+    notice: string | null,
+  ): void {
     room.players = room.players.filter((p) => p.id !== target.id);
-    if (notice) target.socket?.send({ type: 'error', message: notice });
-    target.socket?.close?.(CLOSE_REMOVED, notice ?? 'left');
+    if (notice) target.socket?.send({ type: "error", message: notice });
+    target.socket?.close?.(CLOSE_REMOVED, notice ?? "left");
     target.socket = null;
     if (room.players.length === 0) {
       if (room.autoTimer) clearTimeout(room.autoTimer);
@@ -322,21 +312,25 @@ export class RoomManager {
       const owner = live.players.find((p) => p.id === turnOwner);
       if (!owner || owner.socket) return;
       try {
-        live.game = applyAction(live.game, owner.id, suggestAction(live.game, owner.id));
+        live.game = applyAction(
+          live.game,
+          owner.id,
+          suggestAction(live.game, owner.id),
+        );
         if (live.game.winnerId) this.finishRound(live);
       } catch (err) {
-        console.error('auto-play failed', err);
+        console.error("auto-play failed", err);
       }
       this.touch(live);
       this.broadcast(live);
       this.scheduleAutoPlay(live);
-    }, AUTO_PLAY_DELAY_MS);
+    }, config.autoPlayDelayMs);
   }
 
   private statusOf(room: Room): RoomStatus {
-    if (!room.game) return 'lobby';
-    if (room.game.winnerId) return room.gameWinnerId ? 'gameOver' : 'roundOver';
-    return 'playing';
+    if (!room.game) return "lobby";
+    if (room.game.winnerId) return room.gameWinnerId ? "gameOver" : "roundOver";
+    return "playing";
   }
 
   private snapshot(room: Room, playerId: string): RoomView {
@@ -364,7 +358,7 @@ export class RoomManager {
   /** Pushes a fresh snapshot to every connected player in the room. */
   private broadcast(room: Room): void {
     for (const p of room.players) {
-      p.socket?.send({ type: 'room', room: this.snapshot(room, p.id) });
+      p.socket?.send({ type: "room", room: this.snapshot(room, p.id) });
     }
   }
 
@@ -380,7 +374,7 @@ export class RoomManager {
 
   private getRoom(code: string): Room {
     const room = this.rooms.get(code.toUpperCase());
-    if (!room) throw new RoomError(404, 'Room not found');
+    if (!room) throw new RoomError(404, "Room not found");
     return room;
   }
 
@@ -389,7 +383,7 @@ export class RoomManager {
   }
 
   private sweepIdleRooms(): void {
-    const cutoff = this.now() - ROOM_IDLE_MS;
+    const cutoff = this.now() - config.roomIdleMs;
     for (const room of this.rooms.values()) {
       const anyConnected = room.players.some((p) => p.socket !== null);
       if (!anyConnected && room.lastActive < cutoff) {
@@ -402,19 +396,8 @@ export class RoomManager {
   /** For tests and graceful shutdown. */
   dispose(): void {
     clearInterval(this.sweeper);
-    for (const room of this.rooms.values()) if (room.autoTimer) clearTimeout(room.autoTimer);
+    for (const room of this.rooms.values())
+      if (room.autoTimer) clearTimeout(room.autoTimer);
     this.rooms.clear();
   }
-}
-
-function normalizeRules(input: Rules): Rules {
-  const targetScore = Math.round(Number(input.targetScore));
-  if (!Number.isFinite(targetScore) || targetScore < 100 || targetScore > 5000) {
-    throw new RoomError(400, 'Target score must be between 100 and 5000');
-  }
-  return {
-    stacking: Boolean(input.stacking),
-    challengeWild4: Boolean(input.challengeWild4),
-    targetScore,
-  };
 }

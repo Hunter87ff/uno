@@ -32,8 +32,16 @@ shared/src/
   engine.test.ts      Rule-level unit tests
   fuzz.test.ts        200 randomized full games checking invariants (card conservation etc.)
 server/src/
-  index.ts            Elysia app: REST routes, /ws route, message/close handling
-  rooms.ts            RoomManager: rooms, players, sessions, host, scoring, auto-play, idle sweep
+  index.ts            Elysia app factory (`createApp`), default instance and startup entry point
+  config/             Configuration module (ServerConfig, environment variable parsing, origin validation)
+    index.ts
+  rooms/              Room management module
+    index.ts          Module exports
+    room-manager.ts   RoomManager: state management, player lifecycle, game dispatch, auto-play, sweep
+    types.ts          Room entities (PlayerRecord, Room, Sender, RoomError), validation, code generator
+  routes/             Route modules
+    api.ts            REST API route handlers (/api/health, /api/rooms)
+    ws.ts             WebSocket connection handler, auth validation, socket lifecycle
   schemas.ts          Elysia (TypeBox) validators for requests and client WS messages
   server.test.ts      Integration tests (real server on a random port, real WebSocket clients, static serving, CORS)
   static.ts           Serves client/dist with SPA fallback and path-traversal protection
@@ -138,13 +146,20 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 ## Agent state
 
-_Last updated: 2026-11-03 (initial implementation, verified)._
+_Last updated: 2026-11-04 (modularized server architecture)._
 
 ### Done
 - Bun workspace scaffold (`shared`, `server`, `client`).
 - Engine (`shared/src/engine.ts`): full rules incl. challenge, stacking (optional), UNO catch, scoring, auto-play suggestion, per-viewer views.
 - Engine tests (26 rule-level) and randomized full-game invariant test (200 games). All passing.
-- Elysia server: REST create/join/roomInfo, WebSocket with token auth, reconnect, lobby settings, kick, leave, host transfer, start/next round/play again, auto-play for disconnected players after 20s, idle room sweep. Integration tests passing.
+- Elysia server modular refactoring:
+  - `config.ts`: centralized configuration and environment variable parsing wrapped in a frozen `config` object.
+  - `types.ts`: server entity interfaces, name/rule validators, code generator using `config.codeAlphabet`.
+  - `rooms.ts`: cohesive `RoomManager` focused strictly on room state and player lifecycle using `config`.
+  - `routes/api.ts`: modular REST endpoints (`/api/health`, `/api/rooms`).
+  - `routes/ws.ts`: modular WebSocket route handler with custom origin & auth lifecycle.
+  - `static.ts`: static file serving reading dist paths via `config.clientDist`.
+  - `index.ts`: configurable `createApp` factory function supporting dependency injection and exported `config`.
 - React client: Home, Lobby (settings, kick, copy invite link), Game (opponent seats, discard/draw piles, hand, color picker, challenge/accept, UNO call + catch, round/game overlays, log), reconnection, session persistence.
 - `bun run build` succeeds; `tsc` clean in all packages.
 
