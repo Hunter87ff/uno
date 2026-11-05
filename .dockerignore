@@ -1,0 +1,14 @@
+.git
+.gitignore
+
+node_modules
+client/dist
+
+**/*.test.ts
+**/*.spec.ts
+**/*.map
+
+Dockerfile
+README.md
+PLAN.md
+AGENTS.md

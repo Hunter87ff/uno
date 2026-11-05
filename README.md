@@ -51,6 +51,25 @@ The API and WebSocket live on the same origin, so no CORS setup is needed. Clien
 PORT=8080 bun run start
 ```
 
+### Docker
+
+The Dockerfile uses a two-stage Bun Alpine build. The final image contains the bundled server and client assets only.
+
+```bash
+docker build -t uno .
+docker run --rm --publish 3000:3000 uno
+```
+
+Set `PORT` when exposing a different port inside the container, and set `CORS_ORIGINS` when the browser client is
+hosted on another origin:
+
+```bash
+docker run --rm --publish 8080:8080 \
+	--env PORT=8080 \
+	--env CORS_ORIGINS=https://uno.example.com \
+	uno
+```
+
 Hosting the client on another origin is also supported: point `VITE_SERVER_URL` at the API in `client/.env` and list that
 origin in `CORS_ORIGINS` on the server (default `http://localhost:3000,http://127.0.0.1:3000`).
 
