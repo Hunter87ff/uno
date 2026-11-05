@@ -17,7 +17,6 @@ export type Sfx =
   | 'turn'
   | 'uno'
   | 'catch'
-  | 'challenge'
   | 'roundWin'
   | 'gameWin'
   | 'join'
@@ -259,12 +258,6 @@ const SOUNDS: Record<Sfx, () => void> = {
     tone(150, 0, 0.35, { type: 'square', vol: 0.2, slideTo: 90 });
     tone(140, 0.36, 0.25, { type: 'square', vol: 0.18 });
     noise(0, 0.5, { from: 500, to: 1500, vol: 0.12, q: 4 });
-  },
-  // Challenge: rising tension that snaps into a hit.
-  challenge: () => {
-    tone(110, 0, 0.7, { type: 'sawtooth', vol: 0.14, slideTo: 260 });
-    noise(0.5, 0.25, { from: 600, to: 2400, vol: 0.25, q: 2 });
-    tone(90, 0.5, 0.3, { type: 'sine', vol: 0.45, slideTo: 40 });
   },
   // Round won: a bright chord that arpeggiates up with sparkle.
   roundWin: () => {

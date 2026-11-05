@@ -33,6 +33,7 @@ export type ClientMessage =
   | { type: 'settings'; rules: Partial<Rules> }
   | { type: 'start'; cardsPerPlayer: number }
   | { type: 'nextRound' }
+  | { type: 'resetRoom' }
   | { type: 'kick'; playerId: string }
   | { type: 'leave' }
   | { type: 'action'; action: Action };

@@ -155,13 +155,6 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
                   disabled={!isHost}
                   onChange={(v) => updateRules({ stacking: v })}
                 />
-                <Switch
-                  label="Challenge Wild Draw Four"
-                  description="The next player may challenge a Wild Draw Four they think was illegal."
-                  checked={room.rules.challengeWild4}
-                  disabled={!isHost}
-                  onChange={(v) => updateRules({ challengeWild4: v })}
-                />
                 <div>
                   <p className="mb-2 text-sm font-bold">Play to</p>
                   <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Play to">

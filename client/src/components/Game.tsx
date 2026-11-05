@@ -22,6 +22,7 @@ interface GameProps {
 export function Game({ room, connected, send, onLeaveTable }: GameProps) {
   const round = room.round!;
   const me = room.you;
+  const isHost = room.hostId === me;
   const isMyTurn = round.currentId === me;
   const names = useMemo(() => new Map(room.players.map((p) => [p.id, p.name])), [room.players]);
   const seatIndex = useMemo(() => new Map(room.players.map((p, i) => [p.id, i])), [room.players]);
@@ -32,19 +33,16 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
 
   const playable = new Set(round.playableIds);
   const handCount = round.hand.length;
-  const challengeForMe = round.pendingChallenge?.target === me;
-  const locked = Boolean(round.pendingChallenge); // waiting for a challenge decision
 
-  const canDraw =
-    isMyTurn && !locked && !round.drawnCardId && (round.pendingDraw > 0 || playable.size === 0);
-  const canPass = isMyTurn && !locked && round.pendingDraw === 0 && Boolean(round.drawnCardId);
+  const canDraw = isMyTurn && !round.drawnCardId;
+  const canPass = isMyTurn && round.pendingDraw === 0 && Boolean(round.drawnCardId);
   const canCatch = Boolean(round.unoAlert && round.unoAlert !== me);
 
   const act = (action: Extract<ClientMessage, { type: 'action' }>['action']) =>
     send({ type: 'action', action });
 
   function playCard(card: Card) {
-    if (!isMyTurn || locked || !playable.has(card.id)) return;
+    if (!isMyTurn || !playable.has(card.id)) return;
     if (isWild(card)) {
       setPickingFor(card);
       return;
@@ -70,12 +68,10 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
   const presence = new Map(room.players.map((p) => [p.id, p]));
   const turnText = (() => {
     if (round.winnerId) return '';
-    if (challengeForMe) return 'Wild Draw Four played on you. Challenge it or accept 4 cards.';
-    if (round.pendingChallenge) return `${nameOf(round.pendingChallenge.target)} is deciding on the Wild Draw Four…`;
     if (isMyTurn) {
       if (round.pendingDraw > 0) return `You must draw ${round.pendingDraw} cards.`;
       if (round.drawnCardId) return 'Play the card you drew, or pass.';
-      return playable.size > 0 ? 'Your turn. Play a card.' : 'Your turn. No playable card, so draw.';
+      return playable.size > 0 ? 'Your turn. Play a card, or draw.' : 'Your turn. No playable card, so draw.';
     }
     return `Waiting for ${nameOf(round.currentId)}…`;
   })();
@@ -101,6 +97,16 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
           <span className="glass rounded-xl px-3 py-1.5 text-sm font-bold" title="Direction of play">
             {round.direction === 1 ? '↻ Clockwise' : '↺ Counter-clockwise'}
           </span>
+          {isHost && (
+            <Button
+              variant="secondary"
+              className="px-3 py-1.5 text-xs text-rose-300 ring-rose-500/30 hover:bg-rose-500/20"
+              onClick={() => send({ type: 'resetRoom' })}
+              title="Reset the game and return everyone to lobby"
+            >
+              Restart room
+            </Button>
+          )}
           <Button variant="ghost" className="px-3 py-1.5 text-xs" onClick={onLeaveTable}>
             Leave table
           </Button>
@@ -199,24 +205,17 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
 
         {/* Actions */}
         <div className="flex min-h-11 flex-wrap items-center justify-center gap-2.5">
-          {challengeForMe && (
+          {isMyTurn && (
             <>
-              <Button variant="danger" onClick={() => act({ type: 'challenge' })}>
-                Challenge
-              </Button>
-              <Button variant="warning" onClick={() => act({ type: 'accept' })}>
-                Accept (draw 4)
-              </Button>
-            </>
-          )}
-          {isMyTurn && !challengeForMe && (
-            <>
-              <Button variant="secondary" disabled={!canDraw} onClick={() => act({ type: 'draw' })}>
-                {round.pendingDraw > 0 ? `Draw ${round.pendingDraw}` : 'Draw card'}
-              </Button>
-              <Button variant="secondary" disabled={!canPass} onClick={() => act({ type: 'pass' })}>
-                Pass
-              </Button>
+              {!round.drawnCardId ? (
+                <Button variant="secondary" disabled={!canDraw} onClick={() => act({ type: 'draw' })}>
+                  {round.pendingDraw > 0 ? `Draw ${round.pendingDraw}` : 'Draw card'}
+                </Button>
+              ) : (
+                <Button variant="secondary" disabled={!canPass} onClick={() => act({ type: 'pass' })}>
+                  Pass
+                </Button>
+              )}
             </>
           )}
           {handCount <= 2 && (
@@ -243,7 +242,7 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
       </main>
 
       {/* Hand tray */}
-      <Hand round={round} onPlay={playCard} disabled={!isMyTurn || locked} />
+      <Hand round={round} onPlay={playCard} disabled={!isMyTurn} />
 
       {pickingFor && <ColorPicker onPick={chooseColor} onCancel={() => setPickingFor(null)} />}
       <RoundOverlay room={room} round={round} isHost={room.hostId === me} send={send} nameOf={nameOf} />

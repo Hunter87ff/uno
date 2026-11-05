@@ -189,6 +189,77 @@ describe("WebSocket game flow", () => {
     });
     expect(closed).toBe(4401);
   });
+
+  test("host can reset an in-progress game back to lobby", async () => {
+    const host = await post("/api/rooms", { name: "HostR" });
+    const guest = await post(`/api/rooms/${host.json.code}/join`, {
+      name: "GuestR",
+    });
+    const h = connect(host.json.code, host.json.token);
+    const g = connect(host.json.code, guest.json.token);
+    await Promise.all([h.opened, g.opened]);
+    await h.next((m) => roomOf(m)?.players.length === 2);
+
+    h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
+    await h.next((m) => roomOf(m)?.status === "playing");
+    await g.next((m) => roomOf(m)?.status === "playing");
+
+    // Guest cannot reset
+    g.ws.send(JSON.stringify({ type: "resetRoom" }));
+    const err = await g.next((m) => m.type === "error");
+    expect((err as any).message).toContain("Only the host");
+
+    // Host resets
+    h.ws.send(JSON.stringify({ type: "resetRoom" }));
+    const hLobby = await h.next((m) => roomOf(m)?.status === "lobby");
+    const gLobby = await g.next((m) => roomOf(m)?.status === "lobby");
+
+    expect(roomOf(hLobby)!.round).toBeNull();
+    expect(roomOf(gLobby)!.round).toBeNull();
+    expect(roomOf(hLobby)!.players).toHaveLength(2);
+
+    h.ws.close();
+    g.ws.close();
+  });
+
+  test("player leaving mid-game is removed from the room and player list updates", async () => {
+    const host = await post("/api/rooms", { name: "HostL" });
+    const guest1 = await post(`/api/rooms/${host.json.code}/join`, {
+      name: "Guest1",
+    });
+    const guest2 = await post(`/api/rooms/${host.json.code}/join`, {
+      name: "Guest2",
+    });
+
+    const h = connect(host.json.code, host.json.token);
+    const g1 = connect(host.json.code, guest1.json.token);
+    const g2 = connect(host.json.code, guest2.json.token);
+    await Promise.all([h.opened, g1.opened, g2.opened]);
+    await h.next((m) => roomOf(m)?.players.length === 3);
+
+    h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 5 }));
+    await h.next((m) => roomOf(m)?.status === "playing");
+    await g1.next((m) => roomOf(m)?.status === "playing");
+    await g2.next((m) => roomOf(m)?.status === "playing");
+
+    // Guest 1 leaves the game
+    g1.ws.send(JSON.stringify({ type: "leave" }));
+
+    const hUpdate = await h.next(
+      (m) =>
+        roomOf(m)?.status === "playing" &&
+        roomOf(m)!.players.length === 2 &&
+        !roomOf(m)!.players.some((p) => p.name === "Guest1"),
+    );
+    expect(roomOf(hUpdate)!.round!.order).toHaveLength(2);
+    expect(roomOf(hUpdate)!.round!.order.some((o) => o.name === "Guest1")).toBe(
+      false,
+    );
+
+    h.ws.close();
+    g1.ws.close();
+    g2.ws.close();
+  });
 });
 
 describe("CORS and origin checks", () => {

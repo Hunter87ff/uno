@@ -84,7 +84,6 @@ export function normalizeRules(input: Rules): Rules {
   }
   return {
     stacking: Boolean(input.stacking),
-    challengeWild4: Boolean(input.challengeWild4),
     targetScore,
   };
 }

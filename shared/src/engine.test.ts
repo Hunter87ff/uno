@@ -34,7 +34,6 @@ function setup(overrides: Partial<GameState> & { hands?: Record<string, Card[]> 
   s.currentIndex = 0;
   s.direction = 1;
   s.pendingDraw = 0;
-  s.pendingChallenge = null;
   s.drawnCardId = null;
   s.unoAlert = null;
   s.winnerId = null;
@@ -146,25 +145,32 @@ describe('playing cards', () => {
 });
 
 describe('drawing', () => {
-  test('drawing is blocked when a playable card exists', () => {
+  test('drawing is allowed even when a playable card exists', () => {
     const s = setup({ hands: { a: [card('x', 'number', 'red', 3)], b: [], c: [] } });
-    expect(() => applyAction(s, 'a', { type: 'draw' })).toThrow('playable card');
+    const next = applyAction(s, 'a', { type: 'draw' });
+    expect(next.drawnCardId).toBeTruthy();
   });
 
-  test('draw one, may play the drawn card', () => {
+  test('cannot pass without drawing first', () => {
+    const s = setup({ hands: { a: [card('x', 'number', 'red', 3)], b: [], c: [] } });
+    expect(() => applyAction(s, 'a', { type: 'pass' })).toThrow('Draw a card before passing');
+  });
+
+  test('draw one, may play the drawn card or pass', () => {
     let s = setup({ hands: { a: [card('x', 'number', 'blue', 3)], b: [], c: [] } });
     s.drawPile.push(card('drawn', 'number', 'red', 5));
     s = applyAction(s, 'a', { type: 'draw' });
     expect(s.drawnCardId).toBe('drawn');
     expect(s.currentIndex).toBe(0);
     expect(() => applyAction(s, 'a', { type: 'play', cardId: 'x' })).toThrow('just drew');
-    s = applyAction(s, 'a', { type: 'play', cardId: 'drawn' });
-    expect(s.currentIndex).toBe(1);
-  });
 
-  test('cannot pass without drawing first', () => {
-    const s = setup({ hands: { a: [card('x', 'number', 'blue', 3)], b: [], c: [] } });
-    expect(() => applyAction(s, 'a', { type: 'pass' })).toThrow('Draw a card');
+    // Player can pass after drawing
+    const passed = applyAction(s, 'a', { type: 'pass' });
+    expect(passed.currentIndex).toBe(1);
+
+    // Or play the drawn card
+    const played = applyAction(s, 'a', { type: 'play', cardId: 'drawn' });
+    expect(played.currentIndex).toBe(1);
   });
 });
 
@@ -210,47 +216,14 @@ describe('UNO', () => {
   });
 });
 
-describe('wild draw four and challenges', () => {
-  test('cannot play wild draw four while holding a matching color', () => {
-    const s = setup({ hands: { a: [card('w4', 'wild4', 'wild'), card('r', 'number', 'red', 2)], b: [], c: [] } });
-    expect(playError(s, 'a', s.hands.a![0]!)).toContain('cannot play Wild Draw Four');
-  });
-
-  test('successful challenge returns the card, challenged player draws 4, challenger keeps the turn', () => {
-    // a played Wild Draw Four while still holding a red card (illegal). Build that pending state directly.
-    let s = setup({ hands: { a: [card('r', 'number', 'red', 2)], b: [card('r2', 'number', 'red', 5), card('g', 'number', 'green', 1)], c: [] } });
-    s.discardPile.push(card('w4', 'wild4', 'wild'));
-    s.activeColor = 'green';
-    s.pendingChallenge = { from: 'a', target: 'b', hadMatchingColor: true, prevColor: 'red' };
-    s.currentIndex = 1;
-    s = applyAction(s, 'b', { type: 'challenge' });
-    expect(s.hands.a!.length).toBe(1 + 1 + 4);
-    expect(s.hands.a!.some((c) => c.id === 'w4')).toBe(true);
-    expect(s.discardPile.at(-1)!.id).not.toBe('w4');
+describe('wild draw four', () => {
+  test('wild draw four can be played even while holding a matching color and adds 4 pending draws', () => {
+    let s = setup({ hands: { a: [card('w4', 'wild4', 'wild'), card('r', 'number', 'red', 2)], b: [card('r2', 'number', 'red', 5)], c: [] } });
+    expect(playError(s, 'a', s.hands.a![0]!)).toBeNull();
+    s = applyAction(s, 'a', { type: 'play', cardId: 'w4', color: 'blue' });
+    expect(s.pendingDraw).toBe(4);
+    expect(s.activeColor).toBe('blue');
     expect(s.order[s.currentIndex]).toBe('b');
-    expect(s.activeColor).toBe('red');
-    expect(s.pendingChallenge).toBeNull();
-  });
-
-  test('failed challenge makes the challenger draw 6 and lose the turn', () => {
-    let s = setup({ hands: { a: [card('r', 'number', 'red', 2)], b: [card('r2', 'number', 'red', 5)], c: [] } });
-    s.pendingChallenge = { from: 'a', target: 'b', hadMatchingColor: false, prevColor: 'red' };
-    s.currentIndex = 1;
-    s = applyAction(s, 'b', { type: 'challenge' });
-    expect(s.pendingDraw).toBe(6);
-    s = applyAction(s, 'b', { type: 'draw' });
-    expect(s.hands.b!.length).toBe(7);
-    expect(s.order[s.currentIndex]).toBe('c');
-  });
-
-  test('accept makes the target draw 4 and lose the turn', () => {
-    let s = setup({ hands: { a: [], b: [card('r2', 'number', 'blue', 5)], c: [] } });
-    s.pendingChallenge = { from: 'a', target: 'b', hadMatchingColor: false, prevColor: 'red' };
-    s.currentIndex = 1;
-    s = applyAction(s, 'b', { type: 'accept' });
-    s = applyAction(s, 'b', { type: 'draw' });
-    expect(s.hands.b!.length).toBe(5);
-    expect(s.order[s.currentIndex]).toBe('c');
   });
 });
 

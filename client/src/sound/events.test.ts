@@ -22,7 +22,6 @@ function round(overrides: Partial<PublicRound> = {}): PublicRound {
     drawPileCount: 50,
     unoCalls: 0,
     pendingDraw: 0,
-    pendingChallenge: null,
     unoAlert: null,
     winnerId: null,
     hand: [],
@@ -37,7 +36,7 @@ function room(r: PublicRound | null, status: RoomView['status'] = 'playing'): Ro
   return {
     code: 'ABCDE',
     status,
-    rules: { stacking: false, challengeWild4: true, targetScore: 500 },
+    rules: { stacking: false, targetScore: 500 },
     hostId: 'me',
     you: 'me',
     players: [
@@ -111,12 +110,6 @@ describe('soundsForUpdate', () => {
     const before = room(round());
     const after = room(round({ unoAlert: 'bob' }));
     expect(soundsForUpdate(before, after)).not.toContain('uno');
-  });
-
-  test('a Wild Draw Four challenge plays the challenge sting', () => {
-    const before = room(round());
-    const after = room(round({ pendingChallenge: { from: 'bob', target: 'me' } }));
-    expect(soundsForUpdate(before, after)).toContain('challenge');
   });
 
   test('going out plays the round win sound', () => {

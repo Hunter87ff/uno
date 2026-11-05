@@ -12,8 +12,6 @@ export const ActionSchema = t.Union([
   }),
   t.Object({ type: t.Literal("draw") }),
   t.Object({ type: t.Literal("pass") }),
-  t.Object({ type: t.Literal("challenge") }),
-  t.Object({ type: t.Literal("accept") }),
   t.Object({
     type: t.Literal("catchUno"),
     target: t.String({ maxLength: 64 }),
@@ -27,13 +25,13 @@ export const ClientMessageSchema = t.Union([
     rules: t.Partial(
       t.Object({
         stacking: t.Boolean(),
-        challengeWild4: t.Boolean(),
         targetScore: t.Number(),
       }),
     ),
   }),
   t.Object({ type: t.Literal("start"), cardsPerPlayer: t.Number() }),
   t.Object({ type: t.Literal("nextRound") }),
+  t.Object({ type: t.Literal("resetRoom") }),
   t.Object({ type: t.Literal("kick"), playerId: t.String({ maxLength: 64 }) }),
   t.Object({ type: t.Literal("leave") }),
   t.Object({ type: t.Literal("action"), action: ActionSchema }),

@@ -4,8 +4,8 @@
 - Browser-based UNO, multiplayer, **no accounts/signup**.
 - Create a room → get a short code → share it → others join by entering a **name unique within the room**.
 - Full standard UNO: number/skip/reverse/draw-two/wild/wild-draw-four cards, UNO call + catch penalty,
-  draw-and-play-drawn-card rule, challenge rule for Wild Draw Four, scoring across rounds to a target score.
-- Optional house rules (set by host in lobby): stacking of Draw Two, Wild Draw Four challenge.
+  draw-and-play-drawn-card rule, scoring across rounds to a target score.
+- Optional house rules (set by host in lobby): stacking of Draw Two.
 - Runtime: **Bun** everywhere (no Node). Backend **Elysia** (REST + native WebSocket). Frontend **React + Vite + Tailwind v4**.
 - No 3D library (not needed). Card art is pure SVG/CSS — no external assets, so no licensing concerns.
 
@@ -23,19 +23,16 @@ the client renders server snapshots and never decides legality.
 - `applyAction(state, playerId, action)` → returns a new state or throws `GameError`. Pure (state is cloned).
 - `suggestAction(state, playerId)` → used for auto-play when a player disconnects.
 - `viewFor(state, viewerId)` → per-player public view: own hand visible, opponents only get card counts.
-- Actions: `play {cardId, color?, uno?}`, `draw`, `pass`, `challenge`, `accept`, `catchUno {target}`.
+- Actions: `play {cardId, color?, uno?}`, `draw`, `pass`, `catchUno {target}`, `callUno`.
 
 ### Turn flow
 0. The host picks cards per player (2–15, default 7) and presses "Shuffle & deal". The server shuffles, deals and starts the round.
 1. Player plays a matching card (color / number / same action type) or any Wild.
-2. Draw: only if no playable card; drawn card may be played immediately, otherwise `pass`.
+2. Draw and pass: players may draw a card on their turn even if they hold playable cards. Once drawn, the player may play the drawn card or pass their turn.
 3. Pending draws (from Draw Two / Wild Draw Four) force the target to `draw` and lose their turn.
 4. Going down to one card requires `uno: true` on the play; otherwise anyone can `catchUno` the player (+2 penalty)
    before the next action happens.
-5. Wild Draw Four: if challenge rule is on, the next player may `challenge` (illegal play → player draws 4 and the
-   card is returned, challenger keeps turn) or `accept` (draws 4 and loses turn). A failed challenge makes the
-   challenger draw 6 and lose their turn.
-6. Round ends when a hand empties; winner scores the points of cards left in opponents' hands
+5. Round ends when a hand empties; winner scores the points of cards left in opponents' hands
    (number = face value, action = 20, wild = 50). Game ends when a player reaches `targetScore` (default 500).
 
 ## Server (`server/src`)
@@ -43,8 +40,9 @@ the client renders server snapshots and never decides legality.
 - `POST /api/rooms/:code/join` `{name}` → 409 if name taken in that room (case-insensitive), 404 if no room,
   409 if game already started.
 - `WS /ws?room=CODE&token=TOKEN` → auth by token (reconnect supported). Server pushes `room` snapshots after every change.
-- Client → server messages: `settings`, `start`, `kick`, `nextRound`, `play`, `draw`, `pass`, `challenge`, `accept`, `catchUno`.
-- Disconnected player on turn: server auto-plays after a grace period (`suggestAction`), so games never stall.
+- Client → server messages: `settings`, `start`, `kick`, `nextRound`, `resetRoom`, `leave`, `action`.
+- Disconnected player on turn: server auto-plays after a grace period (`suggestAction`), so games never stall. When a player leaves voluntarily, their hand is recycled and they are removed from the room.
+- Host can restart an in-progress game back to the lobby at any time with `resetRoom`.
 - Empty rooms are deleted after a timeout.
 
 ## Client (`client/src`)

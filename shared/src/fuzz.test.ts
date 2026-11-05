@@ -15,23 +15,21 @@ function legalActions(s: GameState): { pid: string; action: Action }[] {
   const out: { pid: string; action: Action }[] = [];
   const current = s.order[s.currentIndex]!;
 
-  if (s.pendingChallenge) {
-    const target = s.pendingChallenge.target;
-    out.push({ pid: target, action: { type: 'challenge' } });
-    out.push({ pid: target, action: { type: 'accept' } });
-  } else {
-    const hand = s.hands[current]!;
-    for (const card of hand) {
-      if (playError(s, current, card) !== null) continue;
-      if (card.color === 'wild') {
-        for (const color of COLORS) out.push({ pid: current, action: { type: 'play', cardId: card.id, color, uno: true } });
-      } else {
-        out.push({ pid: current, action: { type: 'play', cardId: card.id, uno: true } });
-      }
+  const hand = s.hands[current]!;
+  for (const card of hand) {
+    if (playError(s, current, card) !== null) continue;
+    if (card.color === 'wild') {
+      for (const color of COLORS) out.push({ pid: current, action: { type: 'play', cardId: card.id, color, uno: true } });
+    } else {
+      out.push({ pid: current, action: { type: 'play', cardId: card.id, uno: true } });
     }
-    if (s.pendingDraw > 0) out.push({ pid: current, action: { type: 'draw' } });
-    else if (s.drawnCardId) out.push({ pid: current, action: { type: 'pass' } });
-    else if (!hand.some((c) => playError(s, current, c) === null)) out.push({ pid: current, action: { type: 'draw' } });
+  }
+  if (s.pendingDraw > 0) {
+    out.push({ pid: current, action: { type: 'draw' } });
+  } else if (s.drawnCardId) {
+    out.push({ pid: current, action: { type: 'pass' } });
+  } else {
+    out.push({ pid: current, action: { type: 'draw' } });
   }
 
   if (s.unoAlert) {
@@ -48,13 +46,12 @@ function totalCards(s: GameState): number {
 describe('randomized full games keep engine invariants', () => {
   test('200 games with random legal play never break rules', () => {
     let finished = 0;
-    let challengesResolved = 0;
 
     for (let g = 0; g < 200; g++) {
       const rng = lcg(1000 + g);
       const n = 2 + (g % 4); // 2..5 players
       const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
-      const rules = { stacking: g % 2 === 0, challengeWild4: g % 3 !== 0, targetScore: 500 };
+      const rules = { stacking: g % 2 === 0, targetScore: 500 };
       let s = startRound(players, rules, rng);
       let steps = 0;
 
@@ -73,8 +70,6 @@ describe('randomized full games keep engine invariants', () => {
         const pool = plays.length > 0 && rng() < 0.8 ? plays : options;
         const pick = pool[Math.floor(rng() * pool.length)]!;
 
-        if (pick.action.type === 'challenge') challengesResolved++;
-
         s = applyAction(s, pick.pid, pick.action); // must never throw for a legal option
         steps++;
       }
@@ -86,6 +81,5 @@ describe('randomized full games keep engine invariants', () => {
     }
 
     expect(finished).toBeGreaterThan(150);
-    expect(challengesResolved).toBeGreaterThan(0);
   });
 });

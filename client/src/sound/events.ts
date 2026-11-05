@@ -57,7 +57,6 @@ export function soundsForUpdate(before: RoomView, after: RoomView): Sfx[] {
 
   // Someone pressed UNO: everyone hears the recorded call.
   if (cur.unoCalls > prev.unoCalls) out.push('uno');
-  if (!prev.pendingChallenge && cur.pendingChallenge) out.push('challenge');
   if (cur.currentId === me && prev.currentId !== me) out.push('turn');
 
   return out.slice(0, MAX_PER_UPDATE);

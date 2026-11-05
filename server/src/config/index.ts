@@ -23,7 +23,7 @@ const ALLOWED_ORIGINS = (
   .filter(Boolean);
 
 /** Where `bun run build` writes the client. */
-const CLIENT_DIST = resolve(import.meta.dir, "../../client/dist");
+const CLIENT_DIST = resolve(import.meta.dir, "../../../client/dist");
 
 /** How long a disconnected player may hold up their turn before the server plays for them. */
 const AUTO_PLAY_DELAY_MS = 20_000;

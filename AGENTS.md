@@ -80,23 +80,21 @@ Run one package's tests: `bun test shared` or `bun test server`.
   otherwise it is closed with **4404**.
 - WebSocket: `GET /ws?room=CODE&token=TOKEN`. The token is the only credential. An invalid token closes with
   **4401**. A player removed from the lobby is closed with **4403**. Both codes are defined in `shared/src/protocol.ts`.
-- Client to server: `{type:'settings'|'start'|'nextRound'|'kick'|'leave'|'action', ...}`. `start` carries
+- Client to server: `{type:'settings'|'start'|'nextRound'|'resetRoom'|'kick'|'leave'|'action', ...}`. `start` carries
   `cardsPerPlayer`; `nextRound` reuses the last chosen count. Every new message type needs
   a matching entry in `shared/src/protocol.ts` **and** `server/src/schemas.ts`, or Elysia rejects it.
 - Server to client: `{type:'room', room: RoomView}` after every change (per-viewer, opponents' hands hidden) or
   `{type:'error', message}` for a rejected action sent only to the sender.
-- Engine actions: `play {cardId, color?, uno?}`, `draw`, `pass`, `challenge`, `accept`, `catchUno {target}`, `callUno`.
+- Engine actions: `play {cardId, color?, uno?}`, `draw`, `pass`, `catchUno {target}`, `callUno`.
   `callUno` (UNO button, ≤2 cards) bumps `unoCalls`, which clients use to play the recorded call in `client/src/sound/uno.wav` for everyone.
 
 ## Rules implemented (see PLAN.md for the full flow)
 
 - 108-card deck. The host chooses cards per player (2–15, default 7; fewer when there are many players) and the server
   shuffles and deals to start the round. Starting card effects are applied (Wild Draw Four goes to the bottom).
-- Draw one only when no card is playable; the drawn card may be played; otherwise `pass`.
+- Players may draw a card on their turn even if they have playable cards. Once drawn, the player may play the drawn card or pass.
 - Pending draws (Draw Two / Wild Draw Four) force the target to draw and lose their turn.
 - UNO: `uno: true` on the play that leaves one card. Otherwise anyone may `catchUno` before the next action (+2).
-- Wild Draw Four challenge (house rule `challengeWild4`, default on): illegal play → player draws 4 and gets the card back,
-  challenger keeps the turn; legal play → challenger draws 6 and loses the turn.
 - House rule `stacking` (default off): Draw Two may be answered with Draw Two.
 - Scoring: round winner gets the face value of number cards and 20 per action card and 50 per wild left in opponents'
   hands. Game ends at `targetScore` (default 500).
@@ -146,39 +144,31 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 ## Agent state
 
-_Last updated: 2026-11-04 (modularized server architecture)._
+_Last updated: 2026-11-06 (room restart, leave handling, removed challenge, optional draw/pass)._
 
 ### Done
 - Bun workspace scaffold (`shared`, `server`, `client`).
-- Engine (`shared/src/engine.ts`): full rules incl. challenge, stacking (optional), UNO catch, scoring, auto-play suggestion, per-viewer views.
-- Engine tests (26 rule-level) and randomized full-game invariant test (200 games). All passing.
-- Elysia server modular refactoring:
-  - `config.ts`: centralized configuration and environment variable parsing wrapped in a frozen `config` object.
-  - `types.ts`: server entity interfaces, name/rule validators, code generator using `config.codeAlphabet`.
-  - `rooms.ts`: cohesive `RoomManager` focused strictly on room state and player lifecycle using `config`.
-  - `routes/api.ts`: modular REST endpoints (`/api/health`, `/api/rooms`).
-  - `routes/ws.ts`: modular WebSocket route handler with custom origin & auth lifecycle.
-  - `static.ts`: static file serving reading dist paths via `config.clientDist`.
-  - `index.ts`: configurable `createApp` factory function supporting dependency injection and exported `config`.
-- React client: Home, Lobby (settings, kick, copy invite link), Game (opponent seats, discard/draw piles, hand, color picker, challenge/accept, UNO call + catch, round/game overlays, log), reconnection, session persistence.
+- Engine (`shared/src/engine.ts`): full rules incl. stacking (optional), UNO catch, scoring, auto-play suggestion, per-viewer views, draw/pass allowed with playable cards. Removed Wild Draw Four challenge rule and simplified W4 to always +4 cards.
+- Server (`server/src`):
+  - `resetRoom` message handled: host can restart any in-progress game back to the lobby.
+  - Player leaving voluntarily mid-game: removed from room immediately, hand recycled to draw pile, and turn passes. If fewer than 2 players remain, room resets to lobby.
+- React client (`client/src`):
+  - Added "Restart room" button in Game header (visible to host only).
+  - Passing and drawing available without restriction when holding playable cards.
+  - Removed Challenge UI, lobby toggle, and challenge sound effects.
+- Tests updated and extended: unit tests, fuzz tests, integration tests for restart and mid-game leave.
 - `bun run build` succeeds; `tsc` clean in all packages.
 
 ### Verified
-- `bun test`: 36 tests pass (engine rules, 200 randomized games, server REST + WebSocket integration).
+- `bun test`: 54 tests pass (engine rules, 200 randomized games, server REST + WebSocket integration, sound events).
 - `bun run typecheck` and `bun run build` pass.
-- Headless Chrome, two browser contexts: create room, duplicate name rejected (case-insensitive), second player joins,
-  host starts, 57–101 actions played through to the round-over dialog, no page errors (only the expected 409 from the
-  duplicate-name check).
-- README written.
 
 ### Next
 - Client UI tests (none yet). Consider a Playwright script under `client/e2e/` if it should live in the repo.
 - Mobile layout polish (hand overlap is tuned for ≥ 360px wide screens; not checked on a real device).
-- Decide whether leave-mid-game should forfeit the seat instead of auto-play.
 
 ### Known limitations / ideas
 - Rooms are in-memory; a server restart loses all games.
-- Leaving mid-game is local-only: the server keeps the seat and auto-plays it.
 - No turn timer UI, chat, spectators, bots, Seven-O or Jump-In.
 - Client has no automated UI tests yet.
 

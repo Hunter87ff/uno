@@ -16,8 +16,6 @@ import {
 export interface Rules {
   /** House rule: a Draw Two may be answered with another Draw Two to pass the penalty on. */
   stacking: boolean;
-  /** Official rule: the next player may challenge a Wild Draw Four they suspect was illegal. */
-  challengeWild4: boolean;
   /** Game ends when a player reaches this score. */
   targetScore: number;
 }
@@ -27,20 +25,8 @@ export const CARDS_PER_PLAYER = { min: 2, max: 15, default: 7 } as const;
 
 export const DEFAULT_RULES: Rules = {
   stacking: false,
-  challengeWild4: true,
   targetScore: 500,
 };
-
-export interface PendingChallenge {
-  /** Player who played the Wild Draw Four. */
-  from: string;
-  /** Next player, who must challenge or accept. */
-  target: string;
-  /** Whether `from` still held a card matching the previous color (i.e. the play was illegal). */
-  hadMatchingColor: boolean;
-  /** Active color before the Wild Draw Four was played. */
-  prevColor: Color;
-}
 
 export interface GameState {
   rules: Rules;
@@ -57,7 +43,6 @@ export interface GameState {
   activeColor: Color;
   /** Cards the current player must draw (and then loses their turn). */
   pendingDraw: number;
-  pendingChallenge: PendingChallenge | null;
   /** Id of the card the current player drew this turn, if any. */
   drawnCardId: string | null;
   /** Player who went down to one card without calling UNO; catchable until the next action. */
@@ -72,8 +57,6 @@ export type Action =
   | { type: 'play'; cardId: string; color?: Color; uno?: boolean }
   | { type: 'draw' }
   | { type: 'pass' }
-  | { type: 'challenge' }
-  | { type: 'accept' }
   | { type: 'catchUno'; target: string }
   | { type: 'callUno' };
 
@@ -203,7 +186,6 @@ export function startRound(
     direction: 1,
     activeColor: 'red',
     pendingDraw: 0,
-    pendingChallenge: null,
     drawnCardId: null,
     unoAlert: null,
     unoCalls: 0,
@@ -259,7 +241,6 @@ export function roundPoints(s: GameState): number {
 /** Returns null if `card` may be played by `pid` right now, otherwise a human-readable reason. */
 export function playError(s: GameState, pid: string, card: Card): string | null {
   if (s.winnerId) return 'The round is over';
-  if (s.pendingChallenge) return 'Respond to the Wild Draw Four first (challenge or accept)';
   const top = topCard(s);
 
   if (s.pendingDraw > 0) {
@@ -269,11 +250,6 @@ export function playError(s: GameState, pid: string, card: Card): string | null 
 
   if (s.drawnCardId && card.id !== s.drawnCardId) {
     return 'You can only play the card you just drew';
-  }
-
-  if (card.type === 'wild4' && s.rules.challengeWild4) {
-    const hasMatch = s.hands[pid]!.some((c) => c.id !== card.id && c.color === s.activeColor);
-    if (hasMatch) return `You still have a ${s.activeColor} card, so you cannot play Wild Draw Four`;
   }
 
   if (isWild(card)) return null;
@@ -308,10 +284,6 @@ export function applyAction(state: GameState, playerId: string, action: Action):
       return doDraw(s, playerId);
     case 'pass':
       return doPass(s, playerId);
-    case 'challenge':
-      return doChallenge(s, playerId);
-    case 'accept':
-      return doAccept(s, playerId);
     case 'catchUno':
       return doCatch(s, playerId, action.target);
     case 'callUno':
@@ -349,9 +321,6 @@ function doPlay(
   } else {
     chosen = card.color as Color;
   }
-
-  const hadMatchingColor =
-    card.type === 'wild4' && hand.some((c) => c.id !== card.id && c.color === prevColor);
 
   hand.splice(index, 1);
   s.discardPile.push(card);
@@ -391,18 +360,8 @@ function doPlay(
       passTurn(s, 1);
       break;
     case 'wild4':
-      if (s.rules.challengeWild4) {
-        s.pendingChallenge = {
-          from: pid,
-          target: s.order[seatAfter(s, 1)]!,
-          hadMatchingColor,
-          prevColor,
-        };
-        passTurn(s, 1);
-      } else {
-        s.pendingDraw += 4;
-        passTurn(s, 1);
-      }
+      s.pendingDraw += 4;
+      passTurn(s, 1);
       break;
   }
   return s;
@@ -410,7 +369,6 @@ function doPlay(
 
 function doDraw(s: GameState, pid: string): GameState {
   requireTurn(s, pid);
-  if (s.pendingChallenge) throw new GameError('Respond to the Wild Draw Four first');
 
   if (s.pendingDraw > 0) {
     const count = s.pendingDraw;
@@ -422,9 +380,6 @@ function doDraw(s: GameState, pid: string): GameState {
   }
 
   if (s.drawnCardId) throw new GameError('You already drew a card this turn');
-  if (s.hands[pid]!.some((c) => isPlayable(s, pid, c))) {
-    throw new GameError('You have a playable card, so you cannot draw');
-  }
   const [card] = drawCards(s, pid, 1);
   if (!card) throw new GameError('There are no cards left to draw');
   s.drawnCardId = card.id;
@@ -434,42 +389,10 @@ function doDraw(s: GameState, pid: string): GameState {
 
 function doPass(s: GameState, pid: string): GameState {
   requireTurn(s, pid);
-  if (s.pendingChallenge) throw new GameError('Respond to the Wild Draw Four first');
   if (s.pendingDraw > 0) throw new GameError(`You must draw ${s.pendingDraw} cards`);
   if (!s.drawnCardId) throw new GameError('Draw a card before passing');
   log(s, `${nameOf(s, pid)} passed`);
   passTurn(s, 1);
-  return s;
-}
-
-function doChallenge(s: GameState, pid: string): GameState {
-  const pc = s.pendingChallenge;
-  if (!pc) throw new GameError('There is nothing to challenge');
-  if (pid !== pc.target) throw new GameError('Only the next player can challenge');
-  s.pendingChallenge = null;
-
-  if (pc.hadMatchingColor) {
-    // Illegal play: the Wild Draw Four goes back to its owner, who draws 4. Challenger keeps the turn.
-    const card = s.discardPile.pop()!;
-    s.hands[pc.from]!.push(card);
-    s.activeColor = pc.prevColor;
-    drawCards(s, pc.from, 4);
-    log(s, `${nameOf(s, pid)} challenged and WON: ${nameOf(s, pc.from)} draws 4 and returns the card`);
-  } else {
-    // Legal play: challenger draws 6 and loses the turn.
-    s.pendingDraw = 6;
-    log(s, `${nameOf(s, pid)} challenged and LOST: must draw 6`);
-  }
-  return s;
-}
-
-function doAccept(s: GameState, pid: string): GameState {
-  const pc = s.pendingChallenge;
-  if (!pc) throw new GameError('There is nothing to accept');
-  if (pid !== pc.target) throw new GameError('Only the next player can respond');
-  s.pendingChallenge = null;
-  s.pendingDraw = 4;
-  log(s, `${nameOf(s, pid)} accepted and must draw 4`);
   return s;
 }
 
@@ -495,7 +418,6 @@ function doCatch(s: GameState, pid: string, target: string): GameState {
  * Returns an action that `applyAction` accepts (assuming `pid` is the relevant player).
  */
 export function suggestAction(s: GameState, pid: string): Action {
-  if (s.pendingChallenge && s.pendingChallenge.target === pid) return { type: 'accept' };
   if (s.pendingDraw > 0) return { type: 'draw' };
 
   const hand = s.hands[pid]!;
@@ -528,8 +450,6 @@ export interface PublicRound {
   top: Card;
   drawPileCount: number;
   pendingDraw: number;
-  /** Who must respond to a Wild Draw Four. Whether it was legal stays hidden until resolved. */
-  pendingChallenge: { from: string; target: string } | null;
   unoAlert: string | null;
   unoCalls: number;
   winnerId: string | null;
@@ -557,9 +477,6 @@ export function viewFor(s: GameState, viewerId: string): PublicRound {
     top: topCard(s),
     drawPileCount: s.drawPile.length,
     pendingDraw: s.pendingDraw,
-    pendingChallenge: s.pendingChallenge
-      ? { from: s.pendingChallenge.from, target: s.pendingChallenge.target }
-      : null,
     unoAlert: s.unoAlert,
     unoCalls: s.unoCalls,
     winnerId: s.winnerId,

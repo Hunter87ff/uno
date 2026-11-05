@@ -69,7 +69,7 @@ export default function App() {
   }
 
   const leaveRoom = () => {
-    if (room.status === 'lobby') send({ type: 'leave' });
+    send({ type: 'leave' });
     endSession(null);
   };
 

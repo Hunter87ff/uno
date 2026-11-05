@@ -217,6 +217,21 @@ export class RoomManager {
         return;
       }
 
+      case "resetRoom": {
+        if (!isHost)
+          throw new RoomError(403, "Only the host can restart the room");
+        const status = this.statusOf(room);
+        if (status === "lobby")
+          throw new RoomError(409, "The room is already in the lobby");
+        if (room.autoTimer) clearTimeout(room.autoTimer);
+        room.autoTimer = null;
+        room.game = null;
+        room.lastRoundPoints = null;
+        room.gameWinnerId = null;
+        for (const p of room.players) p.score = 0;
+        return;
+      }
+
       case "kick": {
         if (!isHost)
           throw new RoomError(403, "Only the host can remove players");
@@ -231,12 +246,6 @@ export class RoomManager {
       }
 
       case "leave": {
-        if (this.statusOf(room) !== "lobby") {
-          throw new RoomError(
-            409,
-            "You cannot leave a game in progress; the server will play your turns",
-          );
-        }
         this.removePlayer(room, player, null);
         return;
       }
@@ -263,7 +272,7 @@ export class RoomManager {
     );
   }
 
-  /** Removes a player from a lobby. Transfers host if needed and deletes the room when it empties. */
+  /** Removes a player from a room. Transfers host if needed and handles in-progress game adjustments. */
   private removePlayer(
     room: Room,
     target: PlayerRecord,
@@ -279,6 +288,62 @@ export class RoomManager {
       return;
     }
     if (room.hostId === target.id) room.hostId = room.players[0]!.id;
+
+    // If a game was in progress, adjust or reset the game state
+    if (room.game) {
+      if (room.players.length < MIN_PLAYERS) {
+        // Not enough players left to continue playing: reset back to lobby
+        if (room.autoTimer) clearTimeout(room.autoTimer);
+        room.autoTimer = null;
+        room.game = null;
+        room.lastRoundPoints = null;
+        room.gameWinnerId = null;
+        for (const p of room.players) p.score = 0;
+      } else if (room.game.order.includes(target.id)) {
+        // Player was in the current round
+        if (room.game.winnerId) {
+          // Round was already over, just remove their cards if needed or leave as is
+          delete room.game.hands[target.id];
+          delete room.game.names[target.id];
+          room.game.order = room.game.order.filter((id) => id !== target.id);
+        } else {
+          // Put the leaving player's hand cards back into the draw pile
+          const leftHand = room.game.hands[target.id] ?? [];
+          if (leftHand.length > 0) {
+            room.game.drawPile.unshift(...leftHand);
+          }
+          delete room.game.hands[target.id];
+          delete room.game.names[target.id];
+
+          const targetIndex = room.game.order.indexOf(target.id);
+          const wasCurrent = room.game.currentIndex === targetIndex;
+          const orderLenBefore = room.game.order.length;
+
+          room.game.order = room.game.order.filter((id) => id !== target.id);
+
+          if (room.game.unoAlert === target.id) {
+            room.game.unoAlert = null;
+          }
+
+          if (wasCurrent) {
+            // Turn moves to next player in current direction
+            if (room.game.direction === 1) {
+              room.game.currentIndex = targetIndex % room.game.order.length;
+            } else {
+              room.game.currentIndex =
+                (targetIndex - 1 + room.game.order.length) %
+                room.game.order.length;
+            }
+            room.game.drawnCardId = null;
+          } else if (targetIndex < room.game.currentIndex) {
+            room.game.currentIndex -= 1;
+          }
+
+          // If reverse in 2 players was acting like skip or now down to 2 players, state is intact
+          this.scheduleAutoPlay(room);
+        }
+      }
+    }
   }
 
   private finishRound(room: Room): void {
