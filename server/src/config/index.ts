@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { existsSync } from "fs";
+import { resolve } from "path";
 
 export interface ServerConfig {
   port: number;
@@ -22,8 +23,42 @@ const ALLOWED_ORIGINS = (
   .map((o) => o.trim())
   .filter(Boolean);
 
+/**
+ * Resolves the path to the built client directory (`client/dist`).
+ * Handles:
+ * - Explicit override via `CLIENT_DIST` environment variable
+ * - Running from server workspace / source (`server/src/config`)
+ * - Running from bundled output (e.g., Docker container at `/app/server/src/index.js` where `client/dist` is at `/app/client/dist`)
+ * - Running from repo root (`process.cwd()/client/dist`)
+ */
+function resolveClientDist(): string {
+  if (process.env.CLIENT_DIST) {
+    return resolve(process.env.CLIENT_DIST);
+  }
+
+  const candidates = [
+    // Source execution (server/src/config/index.ts -> ../../../client/dist)
+    resolve(import.meta.dir, "../../../client/dist"),
+    // Bundled at server/src/index.js (e.g. /app/server/src/index.js -> /app/client/dist)
+    resolve(import.meta.dir, "../../client/dist"),
+    // Bundled at root/server/index.js
+    resolve(import.meta.dir, "../client/dist"),
+    // Relative to working directory
+    resolve(process.cwd(), "client/dist"),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Fallback default
+  return candidates[0];
+}
+
 /** Where `bun run build` writes the client. */
-const CLIENT_DIST = resolve(import.meta.dir, "../../../client/dist");
+const CLIENT_DIST = resolveClientDist();
 
 /** How long a disconnected player may hold up their turn before the server plays for them. */
 const AUTO_PLAY_DELAY_MS = 20_000;
