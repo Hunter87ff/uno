@@ -144,24 +144,29 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 ## Agent state
 
-_Last updated: 2026-11-06 (room restart, leave handling, removed challenge, optional draw/pass)._
+_Last updated: 2026-11-06 (replaced string constants with modular TypeScript enums)._
 
 ### Done
 - Bun workspace scaffold (`shared`, `server`, `client`).
-- Engine (`shared/src/engine.ts`): full rules incl. stacking (optional), UNO catch, scoring, auto-play suggestion, per-viewer views, draw/pass allowed with playable cards. Removed Wild Draw Four challenge rule and simplified W4 to always +4 cards.
-- Server (`server/src`):
-  - `resetRoom` message handled: host can restart any in-progress game back to the lobby.
-  - Player leaving voluntarily mid-game: removed from room immediately, hand recycled to draw pile, and turn passes. If fewer than 2 players remain, room resets to lobby.
-- React client (`client/src`):
-  - Added "Restart room" button in Game header (visible to host only).
-  - Passing and drawing available without restriction when holding playable cards.
-  - Removed Challenge UI, lobby toggle, and challenge sound effects.
-- Tests updated and extended: unit tests, fuzz tests, integration tests for restart and mid-game leave.
-- `bun run build` succeeds; `tsc` clean in all packages.
+- Modularized domain enums into `shared/src/types.ts`:
+  - `Color`: `Red`, `Yellow`, `Green`, `Blue`
+  - `SpecialColor`: `Wild`
+  - `CardType`: `Number`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`
+  - `RoomStatus`: `Lobby`, `Playing`, `RoundOver`, `GameOver`
+  - `ActionType`: `Play`, `Draw`, `Pass`, `CatchUno`, `CallUno`
+  - `ClientMessageType`: `Settings`, `Start`, `NextRound`, `ResetRoom`, `Kick`, `Leave`, `Action`
+  - `ServerMessageType`: `Room`, `Error`
+  - `CloseCode`: `InvalidSession`, `Removed`, `ForbiddenOrigin`
+  - `SfxType`: Audio cues (`Play`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `Draw`, `Shuffle`, `Turn`, `Uno`, `Catch`, `RoundWin`, `GameWin`, `Join`, `Error`)
+  - UI primitives in client (`client/src/components/ui.tsx`): preserved original styling and interface contract without modifications.
+  - Storage keys in client: `StorageKey` enum (`Mute`, `Session`, `Name`).
+- Updated engine, validation schemas (Elysia / TypeBox), server room manager, sound event engine, and client communication to use strongly typed enums instead of raw string literals.
+- Updated all unit, fuzz, sound event, and integration tests to use enum values.
 
 ### Verified
-- `bun test`: 54 tests pass (engine rules, 200 randomized games, server REST + WebSocket integration, sound events).
-- `bun run typecheck` and `bun run build` pass.
+- `bun test`: 58 tests pass across 4 test suites (`shared`, `server`, `client/sound`).
+- `bun run typecheck`: clean across all 3 workspaces (`@uno/shared`, `@uno/server`, `@uno/client`).
+- `bun run build`: production client build succeeds.
 
 ### Next
 - Client UI tests (none yet). Consider a Playwright script under `client/e2e/` if it should live in the repo.

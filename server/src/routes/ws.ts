@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import {
-    CLOSE_FORBIDDEN_ORIGIN,
-    CLOSE_INVALID_SESSION,
+    CloseCode,
+    ServerMessageType,
     type ClientMessage,
     type ServerMessage,
 } from "@uno/shared";
@@ -24,7 +24,7 @@ export function createWsRoutes(rooms: RoomManager) {
             // CORS does not apply to WebSockets, so check the Origin header ourselves.
             const origin = ws.data.headers["origin"];
             if (!isOriginAllowed(origin, ws.data.headers["host"])) {
-                ws.close(CLOSE_FORBIDDEN_ORIGIN, "Origin not allowed");
+                ws.close(CloseCode.ForbiddenOrigin, "Origin not allowed");
                 return;
             }
             const sender: Sender = {
@@ -37,8 +37,8 @@ export function createWsRoutes(rooms: RoomManager) {
             } catch (err) {
                 const message =
                     err instanceof Error ? err.message : "Could not connect";
-                ws.send({ type: "error", message } satisfies ServerMessage);
-                ws.close(CLOSE_INVALID_SESSION, message);
+                ws.send({ type: ServerMessageType.Error, message } satisfies ServerMessage);
+                ws.close(CloseCode.InvalidSession, message);
             }
         },
         message(ws, message) {
