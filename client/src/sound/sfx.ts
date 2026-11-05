@@ -178,86 +178,119 @@ function noise(at: number, dur: number, opts: NoiseOpts): void {
 
 /* -------------------------------- Sounds --------------------------------- */
 
+/**
+ * Bell-like tone: a sine fundamental plus an inharmonic partial that decays fast, which gives
+ * the metallic "ping" that plain sine waves lack.
+ */
+function bell(freq: number, at: number, vol = 0.25, dur = 0.8): void {
+  tone(freq, at, dur, { type: 'sine', vol });
+  tone(freq * 2.76, at, dur * 0.35, { type: 'sine', vol: vol * 0.35 });
+}
+
+/** Two slightly detuned oscillators: a fatter, chorused sound. */
+function chorus(freq: number, at: number, dur: number, vol: number, type: OscillatorType = 'triangle'): void {
+  tone(freq * 0.995, at, dur, { type, vol: vol * 0.6 });
+  tone(freq * 1.005, at, dur, { type, vol: vol * 0.6 });
+}
+
 const SOUNDS: Record<Sfx, () => void> = {
-  // Card slapped down: short swish plus a soft thud.
+  // Card slapped down: a sharp click, a swish, then a pitched thud.
   play: () => {
-    noise(0, 0.14, { from: 2200, to: 500, vol: 0.5, q: 0.9 });
-    tone(160, 0.02, 0.12, { type: 'triangle', vol: 0.35, slideTo: 90 });
+    noise(0, 0.03, { from: 4000, to: 2000, vol: 0.4, q: 0.7 });
+    noise(0.01, 0.14, { from: 2200, to: 500, vol: 0.5, q: 0.9 });
+    tone(180, 0.03, 0.14, { type: 'triangle', vol: 0.4, slideTo: 70 });
   },
-  // Skip: a bonk.
+  // Skip: a cartoony bonk with a bouncy follow-up.
   skip: () => {
-    tone(520, 0, 0.16, { type: 'square', vol: 0.18, slideTo: 220 });
-    tone(260, 0.1, 0.12, { type: 'triangle', vol: 0.3 });
+    tone(620, 0, 0.14, { type: 'square', vol: 0.16, slideTo: 180 });
+    tone(330, 0.09, 0.1, { type: 'triangle', vol: 0.3, slideTo: 260 });
+    tone(520, 0.18, 0.12, { type: 'triangle', vol: 0.18 });
   },
-  // Reverse: a whoosh that doubles back.
+  // Reverse: a whoosh that doubles back, with a rising shimmer.
   reverse: () => {
-    noise(0, 0.35, { from: 400, to: 2600, vol: 0.45, q: 1.5 });
-    noise(0.3, 0.3, { from: 2600, to: 400, vol: 0.4, q: 1.5 });
+    noise(0, 0.35, { from: 400, to: 2600, vol: 0.5, q: 1.5 });
+    noise(0.3, 0.3, { from: 2600, to: 400, vol: 0.45, q: 1.5 });
+    tone(300, 0, 0.6, { type: 'sine', vol: 0.08, slideTo: 900 });
+    bell(1320, 0.55, 0.14, 0.4);
   },
-  // Draw Two: swish with a rising two-note alarm.
+  // Draw Two: swish with a rising two-note alarm and a bell accent.
   draw2: () => {
-    noise(0, 0.12, { from: 1800, to: 600, vol: 0.45 });
+    noise(0, 0.12, { from: 1800, to: 600, vol: 0.5 });
     tone(660, 0.12, 0.14, { type: 'square', vol: 0.14 });
     tone(880, 0.24, 0.2, { type: 'square', vol: 0.14 });
+    bell(1760, 0.3, 0.16, 0.5);
   },
-  // Wild: magic arpeggio.
+  // Wild: a sparkling arpeggio with a chorused body.
   wild: () => {
-    [523, 659, 784, 1046].forEach((f, i) => tone(f, i * 0.07, 0.3, { type: 'sine', vol: 0.3 }));
-    noise(0, 0.2, { from: 800, to: 4000, vol: 0.15, q: 3 });
+    [523, 659, 784, 1046].forEach((f, i) => {
+      chorus(f, i * 0.07, 0.35, 0.3);
+      bell(f * 2, i * 0.07, 0.08, 0.3);
+    });
+    noise(0, 0.25, { from: 800, to: 5000, vol: 0.18, q: 3 });
   },
-  // Wild Draw Four: ominous descending sting.
+  // Wild Draw Four: ominous descending sting with a heavy hit.
   wild4: () => {
     tone(330, 0, 0.35, { type: 'sawtooth', vol: 0.16, slideTo: 220 });
-    tone(247, 0.3, 0.45, { type: 'sawtooth', vol: 0.18, slideTo: 165 });
-    noise(0, 0.5, { from: 300, to: 1200, vol: 0.2, q: 2 });
+    tone(247, 0.3, 0.45, { type: 'sawtooth', vol: 0.18, slideTo: 130 });
+    tone(60, 0.3, 0.4, { type: 'sine', vol: 0.5, slideTo: 35 });
+    noise(0, 0.5, { from: 300, to: 1200, vol: 0.22, q: 2 });
   },
-  // Drawing a card: a quick flick.
+  // Drawing a card: a quick flick with a tiny tick at the end.
   draw: () => {
-    noise(0, 0.08, { from: 2400, to: 900, vol: 0.35, q: 1.1 });
+    noise(0, 0.08, { from: 2400, to: 900, vol: 0.4, q: 1.1 });
+    noise(0.07, 0.02, { from: 3500, to: 3000, vol: 0.2, q: 2 });
   },
-  // Shuffle: a flurry of card ticks.
+  // Shuffle: a flurry of card ticks that thins out.
   shuffle: () => {
-    for (let i = 0; i < 10; i++) {
-      noise(i * 0.045 + Math.random() * 0.02, 0.05, { from: 1500 + Math.random() * 2000, to: 800, vol: 0.3, q: 1.4 });
+    for (let i = 0; i < 12; i++) {
+      const vol = 0.3 * (1 - i / 16);
+      noise(i * 0.042 + Math.random() * 0.015, 0.05, { from: 1500 + Math.random() * 2400, to: 800, vol, q: 1.4 });
     }
   },
-  // Your turn: a gentle two-note ding.
+  // Your turn: a bright, bell-like rising ding.
   turn: () => {
-    tone(880, 0, 0.35, { type: 'sine', vol: 0.25 });
-    tone(1320, 0.09, 0.45, { type: 'sine', vol: 0.2 });
+    bell(880, 0, 0.28, 0.5);
+    bell(1320, 0.1, 0.25, 0.7);
   },
   // Someone pressed UNO: the recorded call.
   uno: () => playVoice(),
-  // Caught without UNO: buzzer.
+  // Caught without UNO: a harsh buzzer.
   catch: () => {
     tone(150, 0, 0.35, { type: 'square', vol: 0.2, slideTo: 90 });
     tone(140, 0.36, 0.25, { type: 'square', vol: 0.18 });
+    noise(0, 0.5, { from: 500, to: 1500, vol: 0.12, q: 4 });
   },
-  // Challenge: rising tension.
+  // Challenge: rising tension that snaps into a hit.
   challenge: () => {
     tone(110, 0, 0.7, { type: 'sawtooth', vol: 0.14, slideTo: 260 });
-    noise(0.5, 0.25, { from: 600, to: 2400, vol: 0.2, q: 2 });
+    noise(0.5, 0.25, { from: 600, to: 2400, vol: 0.25, q: 2 });
+    tone(90, 0.5, 0.3, { type: 'sine', vol: 0.45, slideTo: 40 });
   },
-  // Round won: bright chord.
+  // Round won: a bright chord that arpeggiates up with sparkle.
   roundWin: () => {
-    [523, 659, 784].forEach((f) => tone(f, 0, 0.9, { type: 'triangle', vol: 0.22 }));
-    [784, 988, 1175].forEach((f, i) => tone(f, 0.18 + i * 0.08, 0.7, { type: 'triangle', vol: 0.18 }));
+    [523, 659, 784].forEach((f) => chorus(f, 0, 0.9, 0.22));
+    [784, 988, 1175, 1568].forEach((f, i) => {
+      bell(f, 0.18 + i * 0.08, 0.2, 0.7);
+    });
+    noise(0.15, 0.4, { from: 2000, to: 7000, vol: 0.08, q: 2 });
   },
-  // Game won: longer triumphant fanfare.
+  // Game won: a triumphant fanfare with a shimmering finish.
   gameWin: () => {
     const melody = [523, 523, 523, 659, 784, 659, 784, 1046];
     melody.forEach((f, i) => tone(f, i * 0.13, 0.25, { type: 'square', vol: 0.12 }));
-    [262, 392, 523].forEach((f) => tone(f, 1.1, 1.2, { type: 'triangle', vol: 0.25 }));
-    noise(1.1, 0.6, { from: 1000, to: 5000, vol: 0.12, q: 2 });
+    [262, 392, 523].forEach((f) => chorus(f, 1.1, 1.2, 0.25));
+    [1046, 1318, 1568, 2093].forEach((f, i) => bell(f, 1.1 + i * 0.06, 0.14, 1.2));
+    noise(1.1, 0.6, { from: 1000, to: 6000, vol: 0.14, q: 2 });
   },
-  // Someone joined the room.
+  // Someone joined the room: a quick rising pair of chimes.
   join: () => {
-    tone(660, 0, 0.12, { type: 'sine', vol: 0.22 });
-    tone(990, 0.08, 0.18, { type: 'sine', vol: 0.2 });
+    bell(660, 0, 0.22, 0.4);
+    bell(990, 0.08, 0.2, 0.5);
   },
-  // Rejected action or error.
+  // Rejected action or error: a short, dull double buzz.
   error: () => {
-    tone(180, 0, 0.14, { type: 'square', vol: 0.1 });
+    tone(180, 0, 0.12, { type: 'square', vol: 0.1, slideTo: 140 });
+    tone(150, 0.14, 0.14, { type: 'square', vol: 0.1, slideTo: 110 });
   },
 };
 
