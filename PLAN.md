@@ -25,15 +25,22 @@ the client renders server snapshots and never decides legality.
 - `viewFor(state, viewerId)` → per-player public view: own hand visible, opponents only get card counts.
 - Actions: `play {cardId, color?, uno?}`, `draw`, `pass`, `catchUno {target}`, `callUno`.
 
-### Turn flow
-0. The host picks cards per player (2–15, default 7) and presses "Shuffle & deal". The server shuffles, deals and starts the round.
-1. Player plays a matching card (color / number / same action type) or any Wild.
-2. Draw and pass: players may draw a card on their turn even if they hold playable cards. Once drawn, the player may play the drawn card or pass their turn.
-3. Pending draws (from Draw Two / Wild Draw Four) force the target to `draw` and lose their turn.
-4. Going down to one card requires `uno: true` on the play; otherwise anyone can `catchUno` the player (+2 penalty)
-   before the next action happens.
-5. Round ends when a hand empties; winner scores the points of cards left in opponents' hands
-   (number = face value, action = 20, wild = 50). Game ends when a player reaches `targetScore` (default 500).
+### Rules implemented (see PLAN.md for the full flow)
+
+- 108-card deck + optional custom expansion cards (Double Trouble, Swap Hands, Snatch, Shield, Plus Six, Plus Ten).
+- The host chooses cards per player (2–15, default 7) and sets room rules before dealing.
+- Starting card effects are applied (Wild cards go to the bottom).
+- Players may draw a card on their turn even if they have playable cards. Once drawn, the player may play the drawn card or pass.
+- Pending draws (Draw Two / Wild Draw Four / Wild +6 / Wild +10) force the target to draw and lose their turn, unless answered with same or higher plus card when stacking is enabled.
+- UNO: `uno: true` on the play that leaves one card. Otherwise anyone may `catchUno` before the next action (+2).
+- House rules and customizable room settings:
+  - Stacking: same or higher number plus card (+2, +4, +6, +10).
+  - Turn timer: default 30s; forces draw and passes turn upon timeout.
+  - Elimination card limit: optional threshold where exceeding max cards eliminates player from match.
+  - Custom cards toggles: Double Trouble, Swap Hands, Snatch, Shield (1 in deck), Wild +6, Wild +10.
+  - Game layout mode: Horizontal (default) vs Vertical.
+- Scoring: round winner gets the face value of number cards, 20 per action card, and 50 per wild/special left in opponents' hands. Game ends at `targetScore` (default 500).
+- Reverse with two players acts as Skip. Winning card's effect is not applied (the round is over).
 
 ## Server (`server/src`)
 - `POST /api/rooms` `{name}` → creates room, returns `{code, playerId, token}`; creator is host.

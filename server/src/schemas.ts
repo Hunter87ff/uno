@@ -1,4 +1,4 @@
-import { ActionType, COLORS, Color } from "@uno/shared";
+import { ActionType, COLORS, Color, ClientMessageType, NAME_MAX_LENGTH } from "@uno/shared";
 import { t } from "elysia";
 
 export const ColorSchema = t.Enum(Color);
@@ -9,6 +9,7 @@ export const ActionSchema = t.Union([
         cardId: t.String({ maxLength: 64 }),
         color: t.Optional(ColorSchema),
         uno: t.Optional(t.Boolean()),
+        target: t.Optional(t.String({ maxLength: 64 })),
     }),
     t.Object({ type: t.Literal(ActionType.Draw) }),
     t.Object({ type: t.Literal(ActionType.Pass) }),
@@ -17,9 +18,22 @@ export const ActionSchema = t.Union([
         target: t.String({ maxLength: 64 }),
     }),
     t.Object({ type: t.Literal(ActionType.CallUno) }),
+    t.Object({
+        type: t.Literal(ActionType.PlayShield),
+        cardId: t.String({ maxLength: 64 }),
+    }),
 ]);
 
-import { ClientMessageType, NAME_MAX_LENGTH } from "@uno/shared";
+export const CustomCardsSchema = t.Partial(
+    t.Object({
+        doubleTrouble: t.Boolean(),
+        swapHands: t.Boolean(),
+        snatch: t.Boolean(),
+        shield: t.Boolean(),
+        wild6: t.Boolean(),
+        wild10: t.Boolean(),
+    }),
+);
 
 export const ClientMessageSchema = t.Union([
     t.Object({
@@ -28,6 +42,9 @@ export const ClientMessageSchema = t.Union([
             t.Object({
                 stacking: t.Boolean(),
                 targetScore: t.Number(),
+                turnTimer: t.Number(),
+                eliminationLimit: t.Nullable(t.Number()),
+                cards: CustomCardsSchema,
             }),
         ),
     }),

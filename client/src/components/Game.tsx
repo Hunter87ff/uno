@@ -14,6 +14,7 @@ import {
 } from '@uno/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardBack, CardFace, COLOR_FILL } from './Card';
+import type { LayoutMode } from './RoomSettingsModal';
 import { Avatar, Badge, Button, Modal, Panel } from './ui';
 
 interface GameProps {
@@ -21,45 +22,100 @@ interface GameProps {
     connected: boolean;
     send: (message: ClientMessage) => void;
     onLeaveTable: () => void;
+    layoutMode: LayoutMode;
+    onChangeLayoutMode: (mode: LayoutMode) => void;
 }
 
-export function Game({ room, connected, send, onLeaveTable }: GameProps) {
+export function Game({
+    room,
+    connected,
+    send,
+    onLeaveTable,
+    layoutMode,
+    onChangeLayoutMode,
+}: GameProps) {
     const round = room.round!;
     const me = room.you;
     const isHost = room.hostId === me;
-    const isMyTurn = round.currentId === me;
+    const isEliminated = round.eliminated?.includes(me) ?? false;
+    const isMyTurn = round.currentId === me && !isEliminated;
+
     const names = useMemo(() => new Map(room.players.map((p) => [p.id, p.name])), [room.players]);
     const seatIndex = useMemo(() => new Map(room.players.map((p, i) => [p.id, i])), [room.players]);
     const nameOf = (id: string | null) => (id ? (names.get(id) ?? 'Unknown') : '—');
 
     const [pickingFor, setPickingFor] = useState<Card | null>(null);
+    const [snatchTargeting, setSnatchTargeting] = useState<Card | null>(null);
+    const [selectedSnatchTarget, setSelectedSnatchTarget] = useState<string | null>(null);
     const [unoArmed, setUnoArmed] = useState(false);
+
+    // Live Turn Timer countdown
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    useEffect(() => {
+        if (!round.turnDeadline || round.winnerId) {
+            setTimeLeft(null);
+            return;
+        }
+        const tick = () => {
+            const rem = Math.max(0, Math.ceil((round.turnDeadline! - Date.now()) / 1000));
+            setTimeLeft(rem);
+        };
+        tick();
+        const timer = setInterval(tick, 250);
+        return () => clearInterval(timer);
+    }, [round.turnDeadline, round.winnerId, round.currentId]);
 
     const playable = new Set(round.playableIds);
     const handCount = round.hand.length;
+    const shieldInHand = round.hand.find((c) => c.type === CardType.Shield);
 
     const canDraw = isMyTurn && !round.drawnCardId;
-    const canPass = isMyTurn && round.pendingDraw === 0 && Boolean(round.drawnCardId);
+    const canPass = isMyTurn && round.pendingDraw === 0 && (Boolean(round.drawnCardId) || round.extraPlays > 0);
     const canCatch = Boolean(round.unoAlert && round.unoAlert !== me);
 
     const act = (action: Extract<ClientMessage, { type: ClientMessageType.Action }>['action']) =>
         send({ type: ClientMessageType.Action, action });
 
     function playCard(card: Card) {
+        if (isEliminated) return;
+        if (card.type === CardType.Shield) {
+            act({ type: ActionType.PlayShield, cardId: card.id });
+            return;
+        }
         if (!isMyTurn || !playable.has(card.id)) return;
+
+        // Snatch needs target selection first
+        if (card.type === CardType.Snatch) {
+            setSnatchTargeting(card);
+            return;
+        }
+
+        // Wild cards need color selection
         if (isWild(card)) {
             setPickingFor(card);
             return;
         }
+
         act({ type: ActionType.Play, cardId: card.id, uno: unoArmed });
         setUnoArmed(false);
     }
 
     function chooseColor(color: Color) {
         if (!pickingFor) return;
-        act({ type: ActionType.Play, cardId: pickingFor.id, color, uno: unoArmed });
+        const target = selectedSnatchTarget ?? undefined;
+        act({ type: ActionType.Play, cardId: pickingFor.id, color, uno: unoArmed, target });
         setPickingFor(null);
+        setSelectedSnatchTarget(null);
         setUnoArmed(false);
+    }
+
+    function chooseSnatchTarget(targetId: string) {
+        if (!snatchTargeting) return;
+        const card = snatchTargeting;
+        setSnatchTargeting(null);
+        setSelectedSnatchTarget(targetId);
+        // Snatch is also wild, so pick color next
+        setPickingFor(card);
     }
 
     // Seats: opponents in turn order, starting after the viewer.
@@ -70,10 +126,13 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
     }, [round.order, me]);
 
     const presence = new Map(room.players.map((p) => [p.id, p]));
+
     const turnText = (() => {
         if (round.winnerId) return '';
+        if (isEliminated) return 'You are spectating this round.';
         if (isMyTurn) {
-            if (round.pendingDraw > 0) return `You must draw ${round.pendingDraw} cards.`;
+            if (round.pendingDraw > 0) return `You must draw ${round.pendingDraw} cards (or stack a same/higher plus card).`;
+            if (round.extraPlays > 0) return '⚡ Double Trouble active! Play your second card, or pass.';
             if (round.drawnCardId) return 'Play the card you drew, or pass.';
             return playable.size > 0 ? 'Your turn. Play a card, or draw.' : 'Your turn. No playable card, so draw.';
         }
@@ -91,9 +150,20 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
                         {room.code}
                     </span>
                     <Badge>Play to {room.rules.targetScore}</Badge>
+                    {round.eliminationLimit !== null && (
+                        <Badge tone="red">Max {round.eliminationLimit} cards</Badge>
+                    )}
                     {!connected && <Badge tone="red">Reconnecting…</Badge>}
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onChangeLayoutMode(layoutMode === 'horizontal' ? 'vertical' : 'horizontal')}
+                        className="glass flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:bg-white/10"
+                        title="Toggle table layout mode"
+                    >
+                        <span>{layoutMode === 'horizontal' ? '🖥 Horizontal' : '📱 Vertical'}</span>
+                    </button>
                     <span className="glass flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-bold capitalize">
                         <span className="size-3.5 rounded-full ring-2 ring-white/50" style={{ background: activeFill }} />
                         {round.activeColor}
@@ -117,38 +187,101 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
                 </div>
             </header>
 
-            {/* Opponents */}
-            <section className="flex flex-wrap justify-center gap-3 px-4 pt-2" aria-label="Other players">
+            {/* Spectating Notice if Eliminated */}
+            {isEliminated && (
+                <div className="mx-auto max-w-xl px-4 pt-1">
+                    <div className="rounded-2xl border border-rose-500/40 bg-rose-950/60 px-4 py-2 text-center text-xs font-bold text-rose-200 shadow-lg shadow-rose-950/50 backdrop-blur-md">
+                        💀 You exceeded the maximum card limit and were eliminated from this round. You are spectating the match.
+                    </div>
+                </div>
+            )}
+
+            {/* Opponents Section */}
+            <section
+                className={`flex gap-3 px-4 pt-2 ${
+                    layoutMode === 'vertical'
+                        ? 'flex-nowrap justify-start overflow-x-auto pb-1 sm:justify-center'
+                        : 'flex-wrap justify-center'
+                }`}
+                aria-label="Other players"
+            >
                 {seats.map((seat) => {
                     const isTurn = round.currentId === seat.id;
                     const info = presence.get(seat.id);
                     const alert = round.unoAlert === seat.id;
                     const shown = Math.min(seat.cardCount, 7);
+                    const isSeatEliminated = seat.eliminated || round.eliminated?.includes(seat.id);
+                    const isSeatShielded = seat.shielded || round.shieldedPlayers?.includes(seat.id);
+
                     return (
                         <div
                             key={seat.id}
-                            className={`glass relative w-44 rounded-2xl p-3 transition ${isTurn ? 'turn-glow' : ''}`}
+                            className={`glass relative w-44 shrink-0 rounded-2xl p-3 transition ${
+                                isTurn ? 'turn-glow ring-2 ring-amber-300/60' : ''
+                            } ${isSeatEliminated ? 'opacity-40 grayscale' : ''}`}
                         >
                             <div className="flex items-center gap-2.5">
                                 <Avatar name={seat.name} index={seatIndex.get(seat.id) ?? 0} size="sm" />
                                 <div className="min-w-0 flex-1">
                                     <p className="flex items-center gap-1.5 text-sm font-bold">
                                         <span className="truncate">{seat.name}</span>
-                                        {!info?.connected && <span className="size-1.5 shrink-0 rounded-full bg-slate-500" title="Offline" />}
+                                        {!info?.connected && (
+                                            <span className="size-1.5 shrink-0 rounded-full bg-slate-500" title="Offline" />
+                                        )}
                                     </p>
-                                    <p className="text-xs text-white/50">{seat.cardCount} cards</p>
+                                    <p className="text-xs text-white/50">
+                                        {isSeatEliminated ? 'Eliminated' : `${seat.cardCount} cards`}
+                                    </p>
                                 </div>
-                                {isTurn && <Badge tone="gold">Turn</Badge>}
+                                {isTurn && !isSeatEliminated && (
+                                    <div className="flex flex-col items-end">
+                                        <Badge tone="gold">Turn</Badge>
+                                        {timeLeft !== null && (
+                                            <span
+                                                className={`mt-1 font-mono text-[10px] font-black ${
+                                                    timeLeft <= 5
+                                                        ? 'text-rose-400 animate-pulse'
+                                                        : timeLeft <= 10
+                                                        ? 'text-amber-300'
+                                                        : 'text-emerald-400'
+                                                }`}
+                                            >
+                                                {timeLeft}s
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Shield Badge */}
+                            {isSeatShielded && !isSeatEliminated && (
+                                <div className="mt-1 flex items-center gap-1 rounded-md bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-300 ring-1 ring-blue-400/40">
+                                    <span>🛡 Shielded</span>
+                                </div>
+                            )}
+
+                            {/* Cards Fan */}
                             <div className="mt-2 flex h-11 items-center justify-center -space-x-5">
-                                {Array.from({ length: shown }).map((_, i) => (
-                                    <CardBack key={i} size="xs" />
-                                ))}
+                                {isSeatEliminated ? (
+                                    <span className="text-xs font-bold text-rose-300">Out of round</span>
+                                ) : (
+                                    Array.from({ length: shown }).map((_, i) => <CardBack key={i} size="xs" />)
+                                )}
                             </div>
+
+                            {/* UNO Alert & Catch button */}
                             <div className="mt-1 flex min-h-7 items-center justify-center gap-2">
-                                {alert && <span className="uno-pulse rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-black shadow-lg shadow-rose-600/40">UNO!</span>}
-                                {alert && canCatch && (
-                                    <Button variant="danger" className="px-2.5 py-1 text-xs" onClick={() => act({ type: ActionType.CatchUno, target: seat.id })}>
+                                {alert && !isSeatEliminated && (
+                                    <span className="uno-pulse rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-black shadow-lg shadow-rose-600/40">
+                                        UNO!
+                                    </span>
+                                )}
+                                {alert && canCatch && !isEliminated && !isSeatEliminated && (
+                                    <Button
+                                        variant="danger"
+                                        className="px-2.5 py-1 text-xs"
+                                        onClick={() => act({ type: ActionType.CatchUno, target: seat.id })}
+                                    >
                                         Catch!
                                     </Button>
                                 )}
@@ -158,15 +291,26 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
                 })}
             </section>
 
-            {/* Table */}
-            <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-4">
-                <div className="table-felt relative flex aspect-[2.3/1] w-full max-w-2xl items-center justify-center rounded-[50%]">
-                    {/* Subtle table emblem */}
-                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[120px] font-black tracking-tighter text-white/[0.04] select-none">
+            {/* Table Area */}
+            <main
+                className={`flex flex-1 flex-col items-center justify-center gap-4 px-4 py-4 ${
+                    layoutMode === 'vertical' ? 'max-w-md mx-auto w-full' : ''
+                }`}
+            >
+                <div
+                    className={`table-felt relative flex w-full items-center justify-center ${
+                        layoutMode === 'vertical'
+                            ? 'aspect-[1.3/1] max-w-sm rounded-[36px]'
+                            : 'aspect-[2.3/1] max-w-2xl rounded-[50%]'
+                    }`}
+                >
+                    {/* Table emblem */}
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[100px] font-black tracking-tighter text-white/[0.04] select-none sm:text-[120px]">
                         UNO
                     </span>
 
                     <div className="relative flex items-center gap-6 sm:gap-10">
+                        {/* Draw Pile */}
                         <div className="flex flex-col items-center gap-2">
                             <CardBack
                                 size="lg"
@@ -177,6 +321,7 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
                             <span className="text-xs font-semibold text-white/50">{round.drawPileCount} left</span>
                         </div>
 
+                        {/* Discard Pile */}
                         <div className="flex flex-col items-center gap-2">
                             <div className="relative">
                                 <span
@@ -198,36 +343,80 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
                     </div>
                 </div>
 
+                {/* Turn Info & Countdown Banner */}
                 <div
-                    className={`glass max-w-xl rounded-2xl px-5 py-2.5 text-center text-sm font-semibold ${isMyTurn ? 'text-amber-100 ring-1 ring-amber-300/40' : 'text-white/80'
-                        }`}
+                    className={`glass flex items-center justify-center gap-3 max-w-xl rounded-2xl px-5 py-2.5 text-center text-sm font-semibold ${
+                        isMyTurn ? 'text-amber-100 ring-1 ring-amber-300/40' : 'text-white/80'
+                    }`}
                     role="status"
                 >
-                    {turnText}
+                    <span>{turnText}</span>
+                    {isMyTurn && timeLeft !== null && (
+                        <span
+                            className={`inline-flex items-center gap-1 rounded-lg px-2 py-0.5 font-mono text-xs font-black shadow transition ${
+                                timeLeft <= 5
+                                    ? 'bg-rose-600 text-white animate-pulse'
+                                    : timeLeft <= 10
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-400/40'
+                            }`}
+                        >
+                            ⏱ {timeLeft}s
+                        </span>
+                    )}
                 </div>
 
-                {/* Actions */}
+                {/* Actions & Powerups */}
                 <div className="flex min-h-11 flex-wrap items-center justify-center gap-2.5">
+                    {/* Shield button (usable anytime if in hand) */}
+                    {shieldInHand && (
+                        <Button
+                            variant="primary"
+                            className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-black shadow-lg shadow-blue-500/30 hover:brightness-110"
+                            onClick={() => act({ type: ActionType.PlayShield, cardId: shieldInHand.id })}
+                            title="Activate Shield anytime to protect from negative effects for one turn"
+                        >
+                            🛡 Activate Shield
+                        </Button>
+                    )}
+
                     {isMyTurn && (
                         <>
                             {!round.drawnCardId ? (
-                                <Button variant="secondary" disabled={!canDraw} onClick={() => act({ type: ActionType.Draw })}>
+                                <Button
+                                    variant="secondary"
+                                    disabled={!canDraw}
+                                    onClick={() => act({ type: ActionType.Draw })}
+                                >
                                     {round.pendingDraw > 0 ? `Draw ${round.pendingDraw}` : 'Draw card'}
                                 </Button>
                             ) : (
-                                <Button variant="secondary" disabled={!canPass} onClick={() => act({ type: ActionType.Pass })}>
+                                <Button
+                                    variant="secondary"
+                                    disabled={!canPass}
+                                    onClick={() => act({ type: ActionType.Pass })}
+                                >
                                     Pass
+                                </Button>
+                            )}
+
+                            {round.extraPlays > 0 && !round.drawnCardId && (
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => act({ type: ActionType.Pass })}
+                                >
+                                    Finish Turn (Pass)
                                 </Button>
                             )}
                         </>
                     )}
-                    {handCount <= 2 && (
+
+                    {handCount <= 2 && !isEliminated && (
                         <Button
                             variant={unoArmed ? 'danger' : 'secondary'}
                             className={unoArmed ? 'uno-pulse' : ''}
                             aria-pressed={unoArmed}
                             onClick={() => {
-                                // Pressing UNO announces it to every player (and plays the call); it also arms the next play.
                                 if (!unoArmed) act({ type: ActionType.CallUno });
                                 setUnoArmed((v) => !v);
                             }}
@@ -238,6 +427,7 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
                     )}
                 </div>
 
+                {/* Game Log */}
                 <details className="glass w-full max-w-xl rounded-2xl px-4 py-2.5 text-xs text-white/70">
                     <summary className="cursor-pointer select-none font-bold text-white/80">Game log</summary>
                     <Log entries={round.log} />
@@ -245,10 +435,32 @@ export function Game({ room, connected, send, onLeaveTable }: GameProps) {
             </main>
 
             {/* Hand tray */}
-            <Hand round={round} onPlay={playCard} disabled={!isMyTurn} />
+            <Hand
+                round={round}
+                onPlay={playCard}
+                disabled={!isMyTurn || isEliminated}
+            />
 
+            {/* Modals */}
             {pickingFor && <ColorPicker onPick={chooseColor} onCancel={() => setPickingFor(null)} />}
-            <RoundOverlay room={room} round={round} isHost={room.hostId === me} send={send} nameOf={nameOf} />
+
+            {snatchTargeting && (
+                <SnatchTargetModal
+                    opponents={round.order.filter(
+                        (p) => p.id !== me && !(round.eliminated?.includes(p.id)) && p.cardCount > 0,
+                    )}
+                    onSelect={chooseSnatchTarget}
+                    onCancel={() => setSnatchTargeting(null)}
+                />
+            )}
+
+            <RoundOverlay
+                room={room}
+                round={round}
+                isHost={room.hostId === me}
+                send={send}
+                nameOf={nameOf}
+            />
         </div>
     );
 }
@@ -265,9 +477,9 @@ function Hand({
     disabled: boolean;
 }) {
     const playable = new Set(round.playableIds);
-    // Overlap leaves the card centre uncovered, so every card stays clickable.
     const overlap = '-ml-6';
     const playableCount = round.playableIds.length;
+
     return (
         <section
             className="glass mx-auto mb-3 w-[calc(100%-1.5rem)] max-w-5xl rounded-3xl px-3 pb-4 pt-3"
@@ -282,7 +494,7 @@ function Hand({
             <div className="hide-scrollbar flex justify-start overflow-x-auto px-4 pt-7 pb-3 md:justify-center">
                 {round.hand.length === 0 && <p className="py-6 text-sm text-white/50">No cards in hand.</p>}
                 {round.hand.map((card, i) => {
-                    const isPlayable = !disabled && playable.has(card.id);
+                    const isPlayable = (!disabled && playable.has(card.id)) || card.type === CardType.Shield;
                     return (
                         <div key={card.id} className={`relative hover:z-10 focus-within:z-10 ${i === 0 ? '' : overlap}`}>
                             <CardFace
@@ -330,6 +542,55 @@ function ColorPicker({ onPick, onCancel }: { onPick: (color: Color) => void; onC
     );
 }
 
+/* ------------------------- Snatch Target Selector ------------------------ */
+
+function SnatchTargetModal({
+    opponents,
+    onSelect,
+    onCancel,
+}: {
+    opponents: PublicRound['order'];
+    onSelect: (targetId: string) => void;
+    onCancel: () => void;
+}) {
+    return (
+        <Modal label="Snatch a Card">
+            <Panel className="text-center">
+                <h2 className="text-lg font-black text-white flex items-center justify-center gap-2">
+                    <span>🤏 Snatch a Card</span>
+                </h2>
+                <p className="mt-1 text-xs text-white/60">
+                    Choose an opponent to take a random card from:
+                </p>
+                <div className="mt-4 flex flex-col gap-2.5 max-h-60 overflow-y-auto">
+                    {opponents.length === 0 && (
+                        <p className="py-4 text-xs text-white/40">No eligible opponents to snatch from.</p>
+                    )}
+                    {opponents.map((p, i) => (
+                        <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => onSelect(p.id)}
+                            className="flex items-center justify-between p-3 rounded-2xl bg-white/5 hover:bg-white/10 ring-1 ring-white/10 transition group"
+                        >
+                            <div className="flex items-center gap-3">
+                                <Avatar name={p.name} index={i} size="sm" />
+                                <span className="font-bold text-white text-sm">{p.name}</span>
+                            </div>
+                            <span className="text-xs font-mono font-bold text-amber-300">
+                                {p.cardCount} card{p.cardCount === 1 ? '' : 's'}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+                <Button variant="ghost" className="mt-5" onClick={onCancel}>
+                    Cancel
+                </Button>
+            </Panel>
+        </Modal>
+    );
+}
+
 /* ----------------------------- Round overlay ----------------------------- */
 
 function RoundOverlay({
@@ -349,7 +610,12 @@ function RoundOverlay({
 
     const gameOver = room.status === RoomStatus.GameOver;
     const winner = nameOf(gameOver ? room.gameWinnerId : round.winnerId);
-    const sorted = [...room.players].sort((a, b) => b.score - a.score);
+    const sorted = [...room.players].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.id === round.winnerId) return -1;
+        if (b.id === round.winnerId) return 1;
+        return 0;
+    });
 
     return (
         <Modal label={gameOver ? 'Game over' : 'Round over'}>

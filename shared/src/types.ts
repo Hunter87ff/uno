@@ -20,6 +20,12 @@ export enum CardType {
     Draw2 = 'draw2',
     Wild = 'wild',
     Wild4 = 'wild4',
+    DoubleTrouble = 'doubleTrouble',
+    SwapHands = 'swapHands',
+    Snatch = 'snatch',
+    Shield = 'shield',
+    Wild6 = 'wild6',
+    Wild10 = 'wild10',
 }
 
 export enum RoomStatus {
@@ -35,6 +41,7 @@ export enum ActionType {
     Pass = 'pass',
     CatchUno = 'catchUno',
     CallUno = 'callUno',
+    PlayShield = 'playShield',
 }
 
 export enum ClientMessageType {
@@ -81,4 +88,9 @@ export enum SfxType {
     GameWin = 'gameWin',
     Join = 'join',
     Error = 'error',
+    DoubleTrouble = 'doubleTrouble',
+    SwapHands = 'swapHands',
+    Snatch = 'snatch',
+    Shield = 'shield',
+    Eliminated = 'eliminated',
 }

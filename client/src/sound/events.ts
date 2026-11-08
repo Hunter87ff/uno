@@ -8,6 +8,12 @@ const TOP_SOUND: Record<CardType, Sfx> = {
     [CardType.Draw2]: SfxType.Draw2,
     [CardType.Wild]: SfxType.Wild,
     [CardType.Wild4]: SfxType.Wild4,
+    [CardType.DoubleTrouble]: SfxType.DoubleTrouble,
+    [CardType.SwapHands]: SfxType.SwapHands,
+    [CardType.Snatch]: SfxType.Snatch,
+    [CardType.Shield]: SfxType.Shield,
+    [CardType.Wild6]: SfxType.Wild4,
+    [CardType.Wild10]: SfxType.Wild4,
 };
 
 /** Keeps a burst of simultaneous events from turning into noise. */

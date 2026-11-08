@@ -62,54 +62,145 @@ function ReverseIcon({ color, className }: { color: string; className: string })
 }
 
 /** 
- * Iconic 4 overlapping colored mini-cards for Wild Draw Four (+4),
- * layered with drop shadows, white inner frames, and a bold +4 callout badge.
+ * Iconic overlapping colored mini-cards for Wild Draw (+4, +6, +10),
+ * layered with drop shadows, white inner frames, and a bold callout badge.
  */
-function WildFourIcon({ className }: { className: string }) {
+function WildPlusIcon({ count, className }: { count: number; className: string }) {
     return (
         <svg viewBox="0 0 48 48" className={className} aria-hidden>
             <defs>
-                <filter id="w4-shadow" x="-20%" y="-20%" width="150%" height="150%">
+                <filter id={`w-shadow-${count}`} x="-20%" y="-20%" width="150%" height="150%">
                     <feDropShadow dx="0.8" dy="1.2" stdDeviation="1" floodColor="#000" floodOpacity="0.45" />
                 </filter>
             </defs>
-            {/* 4 overlapping mini cards fanning out in order: Red (bottom-left), Blue (top-left), Yellow (bottom-right), Green (top-right/front) */}
-            <g filter="url(#w4-shadow)">
-                {/* Red card (bottom-left) */}
+            {/* 4 overlapping mini cards fanning out in order: Red, Blue, Yellow, Green */}
+            <g filter={`url(#w-shadow-${count})`}>
                 <rect x="7" y="15" width="15" height="23" rx="2.5" fill="#e03a2f" stroke="#ffffff" strokeWidth="1.2" />
                 <rect x="9" y="17" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
             </g>
-            <g filter="url(#w4-shadow)">
-                {/* Blue card (top-left) */}
+            <g filter={`url(#w-shadow-${count})`}>
                 <rect x="13" y="7" width="15" height="23" rx="2.5" fill="#1f6fd6" stroke="#ffffff" strokeWidth="1.2" />
                 <rect x="15" y="9" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
             </g>
-            <g filter="url(#w4-shadow)">
-                {/* Yellow card (bottom-right) */}
+            <g filter={`url(#w-shadow-${count})`}>
                 <rect x="21" y="18" width="15" height="23" rx="2.5" fill="#f7c400" stroke="#ffffff" strokeWidth="1.2" />
                 <rect x="23" y="20" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
             </g>
-            <g filter="url(#w4-shadow)">
-                {/* Green card (top-right, in front) */}
+            <g filter={`url(#w-shadow-${count})`}>
                 <rect x="26" y="10" width="15" height="23" rx="2.5" fill="#1aa34a" stroke="#ffffff" strokeWidth="1.2" />
                 <rect x="28" y="12" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
             </g>
-            {/* Center +4 badge overlay */}
-            <g filter="url(#w4-shadow)">
-                <ellipse cx="24" cy="24" rx="12" ry="8" fill="#111116" stroke="#ffffff" strokeWidth="1" />
+            {/* Center +X badge overlay */}
+            <g filter={`url(#w-shadow-${count})`}>
+                <ellipse cx="24" cy="24" rx="13" ry="8.5" fill="#111116" stroke="#ffffff" strokeWidth="1.2" />
                 <text
                     x="24"
                     y="27.5"
                     textAnchor="middle"
                     fill="#ffffff"
-                    fontSize="11"
+                    fontSize={count >= 10 ? "10" : "11"}
                     fontWeight="900"
                     fontFamily="system-ui, -apple-system, sans-serif"
                     letterSpacing="-0.5px"
                 >
-                    +4
+                    +{count}
                 </text>
             </g>
+        </svg>
+    );
+}
+
+function DoubleTroubleIcon({ className }: { className: string }) {
+    return (
+        <svg viewBox="0 0 48 48" className={className} aria-hidden>
+            <defs>
+                <filter id="dt-shadow" x="-20%" y="-20%" width="150%" height="150%">
+                    <feDropShadow dx="0.8" dy="1.2" stdDeviation="1" floodColor="#000" floodOpacity="0.45" />
+                </filter>
+            </defs>
+            <g filter="url(#dt-shadow)">
+                <rect x="10" y="12" width="16" height="24" rx="3" fill="#e03a2f" stroke="#ffffff" strokeWidth="1.2" />
+                <rect x="22" y="12" width="16" height="24" rx="3" fill="#1f6fd6" stroke="#ffffff" strokeWidth="1.2" />
+            </g>
+            <g filter="url(#dt-shadow)">
+                <ellipse cx="24" cy="24" rx="12" ry="8" fill="#f7c400" stroke="#111116" strokeWidth="1" />
+                <text
+                    x="24"
+                    y="27.5"
+                    textAnchor="middle"
+                    fill="#111116"
+                    fontSize="11"
+                    fontWeight="900"
+                    fontFamily="system-ui, -apple-system, sans-serif"
+                >
+                    2×
+                </text>
+            </g>
+        </svg>
+    );
+}
+
+function SwapHandsIcon({ className }: { className: string }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+            <path
+                d="M4 12a8 8 0 0 1 14.9-4M20 12a8 8 0 0 1-14.9 4"
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+            />
+            <path d="M19 4v4h-4M5 20v-4h4" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="12" cy="12" r="3" fill="#f7c400" />
+        </svg>
+    );
+}
+
+function SnatchIcon({ className }: { className: string }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+            <path
+                d="M6 14l3-6 4 2-2 4 4 2-1 4-8-6z"
+                fill="#f7c400"
+                stroke="#ffffff"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M13 6l5 3-2 5"
+                fill="none"
+                stroke="#e03a2f"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+            />
+            <circle cx="17" cy="14" r="1.5" fill="#ffffff" />
+        </svg>
+    );
+}
+
+function ShieldIcon({ className }: { className: string }) {
+    return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+            <path
+                d="M12 2L4 5v6.5c0 5 3.5 9.5 8 10.5 4.5-1 8-5.5 8-10.5V5l-8-3z"
+                fill="#1f6fd6"
+                stroke="#ffffff"
+                strokeWidth="2"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M12 5.5l-5 2v4c0 3.5 2.2 6.8 5 7.5 2.8-.7 5-4 5-7.5v-4l-5-2z"
+                fill="#f7c400"
+                opacity="0.9"
+            />
+            <path
+                d="M10 11.5l2 2 3-3"
+                fill="none"
+                stroke="#111116"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
         </svg>
     );
 }
@@ -121,6 +212,12 @@ const CORNER: Record<CardModel['type'], (c: CardModel) => string> = {
     [CardType.Draw2]: () => '+2',
     [CardType.Wild]: () => 'W',
     [CardType.Wild4]: () => '+4',
+    [CardType.DoubleTrouble]: () => '2×',
+    [CardType.SwapHands]: () => '⇄',
+    [CardType.Snatch]: () => '🤏',
+    [CardType.Shield]: () => '🛡',
+    [CardType.Wild6]: () => '+6',
+    [CardType.Wild10]: () => '+10',
 };
 
 /* -------------------------------- Card face ------------------------------ */
@@ -159,6 +256,20 @@ export function CardFace({
         center = <ReverseIcon color={INK[color!]} className={s.icon} />;
     } else if (card.type === CardType.Draw2) {
         center = <span className={`font-black leading-none ${s.text}`} style={{ color: INK[color!] }}>+2</span>;
+    } else if (card.type === CardType.Wild4) {
+        center = <WildPlusIcon count={4} className={s.w4Icon} />;
+    } else if (card.type === CardType.Wild6) {
+        center = <WildPlusIcon count={6} className={s.w4Icon} />;
+    } else if (card.type === CardType.Wild10) {
+        center = <WildPlusIcon count={10} className={s.w4Icon} />;
+    } else if (card.type === CardType.DoubleTrouble) {
+        center = <DoubleTroubleIcon className={s.w4Icon} />;
+    } else if (card.type === CardType.SwapHands) {
+        center = <SwapHandsIcon className={s.icon} />;
+    } else if (card.type === CardType.Snatch) {
+        center = <SnatchIcon className={s.icon} />;
+    } else if (card.type === CardType.Shield) {
+        center = <ShieldIcon className={s.icon} />;
     } else {
         center = (
             <span
@@ -175,11 +286,7 @@ export function CardFace({
             {/* Tilted oval background; the glyph inside stays upright. */}
             <span className="absolute inset-x-[10%] inset-y-[12%] rotate-[18deg] rounded-[50%] bg-white" />
             <span className="absolute inset-x-[10%] inset-y-[12%] flex items-center justify-center">
-                {card.type === CardType.Wild4 ? (
-                    <WildFourIcon className={s.w4Icon} />
-                ) : (
-                    center
-                )}
+                {center}
             </span>
             <span
                 className={`absolute left-[6%] top-[4%] font-black leading-none text-white drop-shadow ${s.corner}`}

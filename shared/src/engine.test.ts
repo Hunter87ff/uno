@@ -281,3 +281,236 @@ describe('viewFor', () => {
         expect(JSON.stringify(v)).not.toContain('"x"');
     });
 });
+
+describe('plus card stacking', () => {
+    test('allows playing same or higher plus cards to stack draw penalty', () => {
+        let s = setup({
+            rules: { stacking: true, targetScore: 500, turnTimer: 30, eliminationLimit: null, cards: { doubleTrouble: true, swapHands: true, snatch: true, shield: true, wild6: true, wild10: true } },
+            hands: {
+                a: [card('d2', CardType.Draw2, Color.Red), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: [card('w4', CardType.Wild4, SpecialColor.Wild), card('other', CardType.Number, Color.Blue, 1)],
+                c: [card('w6', CardType.Wild6, SpecialColor.Wild), card('other2', CardType.Number, Color.Blue, 2)],
+            },
+        });
+
+        // Player A plays +2
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'd2' });
+        expect(s.pendingDraw).toBe(2);
+        expect(s.order[s.currentIndex]).toBe('b');
+
+        // Player B stacks +4 on top of +2
+        s = applyAction(s, 'b', { type: ActionType.Play, cardId: 'w4', color: Color.Green });
+        expect(s.pendingDraw).toBe(6);
+        expect(s.order[s.currentIndex]).toBe('c');
+
+        // Player C stacks +6 on top of +4
+        s = applyAction(s, 'c', { type: ActionType.Play, cardId: 'w6', color: Color.Red });
+        expect(s.pendingDraw).toBe(12);
+        expect(s.order[s.currentIndex]).toBe('a');
+    });
+
+    test('rejects playing a lower plus card on a higher plus card', () => {
+        let s = setup({
+            rules: { stacking: true, targetScore: 500, turnTimer: 30, eliminationLimit: null, cards: { doubleTrouble: true, swapHands: true, snatch: true, shield: true, wild6: true, wild10: true } },
+            hands: {
+                a: [card('w4', CardType.Wild4, SpecialColor.Wild), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: [card('d2', CardType.Draw2, Color.Red), card('extra_b', CardType.Number, Color.Blue, 1)],
+                c: [],
+            },
+        });
+
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'w4', color: Color.Red });
+        expect(s.pendingDraw).toBe(4);
+
+        // Player B tries to stack +2 on +4 -> rejected!
+        expect(playError(s, 'b', s.hands.b![0]!)).toBe('You must draw 4 cards');
+        expect(() => applyAction(s, 'b', { type: ActionType.Play, cardId: 'd2' })).toThrow('You must draw 4 cards');
+    });
+});
+
+describe('new cards: Double Trouble', () => {
+    test('allows playing two cards in one turn', () => {
+        let s = setup({
+            hands: {
+                a: [card('dt', CardType.DoubleTrouble, SpecialColor.Wild), card('n1', CardType.Number, Color.Blue, 5), card('n2', CardType.Number, Color.Yellow, 2)],
+                b: [card('b1', CardType.Number, Color.Red, 1)],
+                c: [],
+            },
+        });
+
+        // Player A plays Double Trouble
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'dt', color: Color.Blue });
+        expect(s.extraPlays).toBe(1);
+        expect(s.order[s.currentIndex]).toBe('a'); // turn stays with player A!
+
+        // Player A plays their second card
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'n1' });
+        expect(s.extraPlays).toBe(0);
+        expect(s.order[s.currentIndex]).toBe('b'); // turn now advances to player B!
+    });
+});
+
+describe('new cards: Swap Hands', () => {
+    test('all players swap their hands in current direction', () => {
+        let s = setup({
+            hands: {
+                a: [card('sh', CardType.SwapHands, SpecialColor.Wild)],
+                b: [card('b1', CardType.Number, Color.Blue, 1), card('b2', CardType.Number, Color.Blue, 2)],
+                c: [card('c1', CardType.Number, Color.Green, 3)],
+            },
+        });
+
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'sh', color: Color.Red });
+        expect(s.winnerId).toBe('a');
+    });
+
+    test('swaps hands when players have cards remaining', () => {
+        let s = setup({
+            hands: {
+                a: [card('sh', CardType.SwapHands, SpecialColor.Wild), card('a1', CardType.Number, Color.Red, 9)],
+                b: [card('b1', CardType.Number, Color.Blue, 1), card('b2', CardType.Number, Color.Blue, 2)],
+                c: [card('c1', CardType.Number, Color.Green, 3)],
+            },
+        });
+
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'sh', color: Color.Red });
+
+        expect(s.hands.a!.map((c) => c.id)).toEqual(['c1']);
+        expect(s.hands.b!.map((c) => c.id)).toEqual(['a1']);
+        expect(s.hands.c!.map((c) => c.id)).toEqual(['b1', 'b2']);
+        expect(s.order[s.currentIndex]).toBe('b');
+    });
+});
+
+describe('new cards: Snatch', () => {
+    test('takes a random card from the target player', () => {
+        let s = setup({
+            hands: {
+                a: [card('sn', CardType.Snatch, SpecialColor.Wild), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: [card('b1', CardType.Number, Color.Blue, 1)],
+                c: [card('c1', CardType.Number, Color.Green, 3)],
+            },
+        });
+
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'sn', color: Color.Blue, target: 'b' });
+        // Target b had 1 card; a snatched it!
+        expect(s.hands.b!.length).toBe(0);
+        expect(s.hands.a!.length).toBe(2);
+        expect(s.hands.a!.some((c) => c.id === 'b1')).toBe(true);
+        expect(s.order[s.currentIndex]).toBe('b');
+    });
+});
+
+describe('new cards: Shield', () => {
+    test('shield can be used anytime to absorb pending draws', () => {
+        let s = setup({
+            hands: {
+                a: [card('d2', CardType.Draw2, Color.Red), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: [card('shld', CardType.Shield, SpecialColor.Wild), card('b1', CardType.Number, Color.Blue, 1)],
+                c: [],
+            },
+        });
+
+        // Player A plays +2
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'd2' });
+        expect(s.pendingDraw).toBe(2);
+        expect(s.order[s.currentIndex]).toBe('b');
+
+        // Player B uses Shield card to absorb pending draw
+        s = applyAction(s, 'b', { type: ActionType.PlayShield, cardId: 'shld' });
+        expect(s.pendingDraw).toBe(0); // absorbed!
+        expect(s.order[s.currentIndex]).toBe('b'); // still player B's turn to play!
+    });
+
+    test('shield protects against skip', () => {
+        let s = setup({
+            hands: {
+                a: [card('sk', CardType.Skip, Color.Red), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: [card('shld', CardType.Shield, SpecialColor.Wild), card('b1', CardType.Number, Color.Blue, 1)],
+                c: [card('c1', CardType.Number, Color.Green, 2)],
+            },
+        });
+
+        // Player B activates shield out of turn before A plays
+        s = applyAction(s, 'b', { type: ActionType.PlayShield, cardId: 'shld' });
+        expect(s.shielded.b).toBe(true);
+
+        // Player A plays Skip targeting B
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'sk' });
+        // B's shield absorbed the skip! Turn goes to B instead of skipping to C!
+        expect(s.shielded.b).toBe(false);
+        expect(s.order[s.currentIndex]).toBe('b');
+    });
+});
+
+describe('elimination card limit', () => {
+    test('eliminates players who exceed the max card limit and declares last survivor winner', () => {
+        let s = setup({
+            rules: {
+                stacking: false,
+                targetScore: 500,
+                turnTimer: 30,
+                eliminationLimit: 4, // Max 4 cards
+                cards: { doubleTrouble: false, swapHands: false, snatch: false, shield: false, wild6: false, wild10: false },
+            },
+            hands: {
+                a: [card('d2', CardType.Draw2, Color.Red), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: [card('b1', CardType.Number, Color.Blue, 1), card('b2', CardType.Number, Color.Blue, 2), card('b3', CardType.Number, Color.Blue, 3)],
+                c: [card('c1', CardType.Number, Color.Green, 1)],
+            },
+        });
+
+        // Player A plays Draw2. B had 3 cards, draws 2 -> 5 cards > limit of 4!
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'd2' });
+        s = applyAction(s, 'b', { type: ActionType.Draw });
+
+        // Player B should be eliminated!
+        expect(s.eliminated).toContain('b');
+        expect(s.order).not.toContain('b');
+        expect(s.order).toEqual(['a', 'c']);
+    });
+
+    test('awards points from eliminated player hand to the round winner', () => {
+        // Player A plays Wild 10. Player B holds 6 cards, draws 10 cards -> 16 cards > limit of 15!
+        // Player B is eliminated. Player A is the sole survivor and wins.
+        const bCards = [
+            card('b1', CardType.Number, Color.Blue, 5),
+            card('b2', CardType.Number, Color.Blue, 5),
+            card('b3', CardType.Draw2, Color.Red), // 20 pts
+            card('b4', CardType.Wild, SpecialColor.Wild), // 50 pts
+            card('b5', CardType.Number, Color.Green, 8),
+            card('b6', CardType.Number, Color.Yellow, 2),
+        ];
+        let s = setup({
+            rules: {
+                stacking: false,
+                targetScore: 500,
+                turnTimer: 30,
+                eliminationLimit: 15, // Limit is 15 cards
+                cards: { doubleTrouble: false, swapHands: false, snatch: false, shield: false, wild6: false, wild10: true },
+            },
+            hands: {
+                a: [card('w10', CardType.Wild10, SpecialColor.Wild), card('extra_a', CardType.Number, Color.Red, 1)],
+                b: bCards,
+            },
+        }, [PLAYERS[0]!, PLAYERS[1]!]);
+
+        // Draw pile has 10 cards for B to draw
+        s.drawPile = Array.from({ length: 10 }, (_, i) => card(`dp${i}`, CardType.Number, Color.Red, 1)); // 10 * 1 = 10 pts
+
+        // A plays +10
+        s = applyAction(s, 'a', { type: ActionType.Play, cardId: 'w10', color: Color.Red });
+        expect(s.pendingDraw).toBe(10);
+
+        // B draws 10 cards: B now has 16 cards, exceeding the limit of 15!
+        s = applyAction(s, 'b', { type: ActionType.Draw });
+
+        // B is eliminated, A is winner
+        expect(s.eliminated).toContain('b');
+        expect(s.winnerId).toBe('a');
+
+        // B had 5 + 5 + 20 + 50 + 8 + 2 = 90 pts, plus 10 drawn cards of 1 pt each = 100 pts total
+        const points = roundPoints(s);
+        expect(points).toBe(100);
+    });
+});

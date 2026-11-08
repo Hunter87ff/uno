@@ -8,8 +8,8 @@ import {
 } from '@uno/shared';
 import { useState } from 'react';
 import { Avatar, Badge, Button, Logo, Panel } from './ui';
+import { RoomSettingsModal, type LayoutMode } from './RoomSettingsModal';
 
-const TARGET_OPTIONS = [200, 300, 500, 1000];
 const MAX_PLAYERS_SHOWN = 10;
 
 interface LobbyProps {
@@ -17,17 +17,21 @@ interface LobbyProps {
     connected: boolean;
     send: (message: ClientMessage) => void;
     onLeave: () => void;
+    layoutMode: LayoutMode;
+    onChangeLayoutMode: (mode: LayoutMode) => void;
 }
 
-export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
+export function Lobby({ room, connected, send, onLeave, layoutMode, onChangeLayoutMode }: LobbyProps) {
     const [copied, setCopied] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+
     const isHost = room.hostId === room.you;
     const playerCount = room.players.length;
     const canStart = isHost && playerCount >= MIN_PLAYERS;
 
     // Host picks how many cards each player gets; the server shuffles, deals and starts the game.
     const [cards, setCards] = useState(room.cardsPerPlayer);
-    // With more players, fewer cards fit in one 108-card deck (one card is kept to start the pile).
+    // With more players, fewer cards fit in the deck (one card is kept to start the pile).
     const maxCards = Math.min(CARDS_PER_PLAYER.max, Math.floor(107 / Math.max(playerCount, 1)));
     const dealCount = Math.min(cards, maxCards);
     const canDeal = canStart && dealCount >= CARDS_PER_PLAYER.min;
@@ -46,6 +50,9 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
 
     const updateRules = (partial: Partial<Rules>) => send({ type: ClientMessageType.Settings, rules: partial });
 
+    // Count how many custom cards are enabled
+    const activeCards = Object.entries(room.rules.cards ?? {}).filter(([, v]) => Boolean(v));
+
     // Show empty seats so the room looks like it is filling up.
     const emptySeats = Math.max(0, Math.min(4, MAX_PLAYERS_SHOWN) - playerCount);
 
@@ -55,6 +62,13 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
             <header className="flex items-center justify-between px-6 py-4">
                 <Logo size="sm" />
                 <div className="flex items-center gap-3">
+                    <Button
+                        variant="secondary"
+                        className="px-3.5 py-1.5 text-xs font-bold ring-white/20 hover:bg-white/20"
+                        onClick={() => setSettingsOpen(true)}
+                    >
+                        ⚙ Room Settings
+                    </Button>
                     <Badge tone={connected ? 'green' : 'red'}>
                         <span className={`size-1.5 rounded-full ${connected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                         {connected ? 'Live' : 'Reconnecting…'}
@@ -151,40 +165,52 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
                     </Panel>
 
                     <div className="flex flex-col gap-6">
-                        {/* House rules */}
+                        {/* Room Rules Summary */}
                         <Panel>
-                            <h2 className="mb-5 text-lg font-black">House rules</h2>
-                            <div className="flex flex-col gap-5">
-                                <Switch
-                                    label="Stacking"
-                                    description="Answer a Draw Two with another Draw Two to pass the penalty on."
-                                    checked={room.rules.stacking}
-                                    disabled={!isHost}
-                                    onChange={(v) => updateRules({ stacking: v })}
-                                />
-                                <div>
-                                    <p className="mb-2 text-sm font-bold">Play to</p>
-                                    <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Play to">
-                                        {TARGET_OPTIONS.map((v) => {
-                                            const active = room.rules.targetScore === v;
-                                            return (
-                                                <button
-                                                    key={v}
-                                                    type="button"
-                                                    role="radio"
-                                                    aria-checked={active}
-                                                    disabled={!isHost}
-                                                    onClick={() => updateRules({ targetScore: v })}
-                                                    className={`rounded-xl py-2 text-sm font-black transition disabled:cursor-default ${active
-                                                            ? 'bg-white text-slate-900 shadow-lg'
-                                                            : 'bg-white/5 text-white/70 ring-1 ring-white/10 enabled:hover:bg-white/10'
-                                                        }`}
-                                                >
-                                                    {v}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h2 className="text-lg font-black">Room Rules & Settings</h2>
+                                <Button
+                                    variant="secondary"
+                                    className="px-3 py-1 text-xs"
+                                    onClick={() => setSettingsOpen(true)}
+                                >
+                                    {isHost ? 'Edit Settings ⚙' : 'View Settings ⚙'}
+                                </Button>
+                            </div>
+                            <div className="flex flex-col gap-3 text-xs">
+                                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03]">
+                                    <span className="text-white/70">Play to Target</span>
+                                    <span className="font-bold text-white">{room.rules.targetScore} points</span>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03]">
+                                    <span className="text-white/70">Plus Card Stacking</span>
+                                    <Badge tone={room.rules.stacking ? 'green' : undefined}>
+                                        {room.rules.stacking ? 'Enabled (Same or Higher)' : 'Disabled'}
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03]">
+                                    <span className="text-white/70">Turn Timer</span>
+                                    <Badge tone={room.rules.turnTimer > 0 ? 'green' : undefined}>
+                                        {room.rules.turnTimer > 0 ? `${room.rules.turnTimer} seconds` : 'Disabled'}
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03]">
+                                    <span className="text-white/70">Elimination Limit</span>
+                                    <Badge tone={room.rules.eliminationLimit !== null ? 'red' : undefined}>
+                                        {room.rules.eliminationLimit !== null
+                                            ? `Max ${room.rules.eliminationLimit} cards`
+                                            : 'Disabled'}
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03]">
+                                    <span className="text-white/70">Special Expansion Cards</span>
+                                    <Badge tone={activeCards.length > 0 ? 'gold' : undefined}>
+                                        {activeCards.length > 0 ? `${activeCards.length} Enabled` : 'Standard Deck'}
+                                    </Badge>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03]">
+                                    <span className="text-white/70">Window Layout</span>
+                                    <span className="font-bold capitalize text-white">{layoutMode} mode</span>
                                 </div>
                             </div>
                         </Panel>
@@ -203,7 +229,11 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
                                                     : `Waiting for at least ${MIN_PLAYERS} players`}
                                             </p>
                                         </div>
-                                        <div className="flex items-center gap-2 rounded-2xl bg-black/30 p-1.5 ring-1 ring-white/10" role="group" aria-label="Cards per player">
+                                        <div
+                                            className="flex items-center gap-2 rounded-2xl bg-black/30 p-1.5 ring-1 ring-white/10"
+                                            role="group"
+                                            aria-label="Cards per player"
+                                        >
                                             <Button
                                                 variant="ghost"
                                                 aria-label="Fewer cards"
@@ -213,7 +243,10 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
                                             >
                                                 −
                                             </Button>
-                                            <span className="w-10 text-center text-3xl font-black tabular-nums" data-testid="cards-per-player">
+                                            <span
+                                                className="w-10 text-center text-3xl font-black tabular-nums"
+                                                data-testid="cards-per-player"
+                                            >
                                                 {dealCount}
                                             </span>
                                             <Button
@@ -252,6 +285,16 @@ export function Lobby({ room, connected, send, onLeave }: LobbyProps) {
                     </div>
                 </div>
             </main>
+
+            <RoomSettingsModal
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                rules={room.rules}
+                isHost={isHost}
+                onUpdateRules={updateRules}
+                layoutMode={layoutMode}
+                onChangeLayoutMode={onChangeLayoutMode}
+            />
         </div>
     );
 }
@@ -277,44 +320,6 @@ function FanPreview({ count }: { count: number }) {
                     />
                 );
             })}
-        </div>
-    );
-}
-
-function Switch({
-    label,
-    description,
-    checked,
-    disabled,
-    onChange,
-}: {
-    label: string;
-    description: string;
-    checked: boolean;
-    disabled: boolean;
-    onChange: (value: boolean) => void;
-}) {
-    return (
-        <div className="flex items-start justify-between gap-4">
-            <div>
-                <p className="text-sm font-bold">{label}</p>
-                <p className="text-xs text-white/50">{description}</p>
-            </div>
-            <button
-                type="button"
-                role="switch"
-                aria-checked={checked}
-                aria-label={label}
-                disabled={disabled}
-                onClick={() => onChange(!checked)}
-                className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition disabled:cursor-default ${checked ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30' : 'bg-white/15'
-                    }`}
-            >
-                <span
-                    className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-all ${checked ? 'left-[22px]' : 'left-0.5'
-                        }`}
-                />
-            </button>
         </div>
     );
 }

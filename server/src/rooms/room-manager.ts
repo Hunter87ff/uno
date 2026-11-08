@@ -1,4 +1,5 @@
 import {
+    ActionType,
     type Action,
     CARDS_PER_PLAYER,
     ClientMessageType,
@@ -63,6 +64,8 @@ export class RoomManager {
             gameWinnerId: null,
             lastActive: this.now(),
             autoTimer: null,
+            turnTimerId: null,
+            turnDeadline: null,
         };
         this.rooms.set(code, room);
         return { code, playerId: player.id, token: player.token };
@@ -206,6 +209,8 @@ export class RoomManager {
                 room.gameWinnerId = null;
                 room.lastRoundPoints = null;
                 room.game = game;
+                this.scheduleTurnTimer(room);
+                this.scheduleAutoPlay(room);
                 return;
             }
 
@@ -216,6 +221,8 @@ export class RoomManager {
                     throw new RoomError(409, "The round is not over yet");
                 room.game = this.deal(room, room.cardsPerPlayer);
                 room.lastRoundPoints = null;
+                this.scheduleTurnTimer(room);
+                this.scheduleAutoPlay(room);
                 return;
             }
 
@@ -227,6 +234,9 @@ export class RoomManager {
                     throw new RoomError(409, "The room is already in the lobby");
                 if (room.autoTimer) clearTimeout(room.autoTimer);
                 room.autoTimer = null;
+                if (room.turnTimerId) clearTimeout(room.turnTimerId);
+                room.turnTimerId = null;
+                room.turnDeadline = null;
                 room.game = null;
                 room.lastRoundPoints = null;
                 room.gameWinnerId = null;
@@ -258,6 +268,7 @@ export class RoomManager {
                 const next = applyAction(before, player.id, message.action as Action);
                 room.game = next;
                 if (!before.winnerId && next.winnerId) this.finishRound(room);
+                this.scheduleTurnTimer(room);
                 this.scheduleAutoPlay(room);
                 return;
             }
@@ -286,6 +297,7 @@ export class RoomManager {
         target.socket = null;
         if (room.players.length === 0) {
             if (room.autoTimer) clearTimeout(room.autoTimer);
+            if (room.turnTimerId) clearTimeout(room.turnTimerId);
             this.rooms.delete(room.code);
             return;
         }
@@ -297,6 +309,9 @@ export class RoomManager {
                 // Not enough players left to continue playing: reset back to lobby
                 if (room.autoTimer) clearTimeout(room.autoTimer);
                 room.autoTimer = null;
+                if (room.turnTimerId) clearTimeout(room.turnTimerId);
+                room.turnTimerId = null;
+                room.turnDeadline = null;
                 room.game = null;
                 room.lastRoundPoints = null;
                 room.gameWinnerId = null;
@@ -349,6 +364,9 @@ export class RoomManager {
     }
 
     private finishRound(room: Room): void {
+        if (room.turnTimerId) clearTimeout(room.turnTimerId);
+        room.turnTimerId = null;
+        room.turnDeadline = null;
         const game = room.game!;
         const points = roundPoints(game);
         room.lastRoundPoints = points;
@@ -356,6 +374,49 @@ export class RoomManager {
         if (!winner) return;
         winner.score += points;
         if (winner.score >= room.rules.targetScore) room.gameWinnerId = winner.id;
+    }
+
+    private scheduleTurnTimer(room: Room): void {
+        if (room.turnTimerId) clearTimeout(room.turnTimerId);
+        room.turnTimerId = null;
+        room.turnDeadline = null;
+
+        const game = room.game;
+        if (!game || game.winnerId || room.rules.turnTimer <= 0) return;
+
+        const durationMs = room.rules.turnTimer * 1000;
+        room.turnDeadline = this.now() + durationMs;
+
+        room.turnTimerId = setTimeout(() => {
+            room.turnTimerId = null;
+            this.handleTurnTimeout(room.code);
+        }, durationMs);
+    }
+
+    private handleTurnTimeout(roomCode: string): void {
+        const room = this.rooms.get(roomCode);
+        if (!room || !room.game || room.game.winnerId) return;
+
+        const currentId = room.game.order[room.game.currentIndex];
+        if (!currentId) return;
+
+        try {
+            // Player timed out: force draw
+            let next = applyAction(room.game, currentId, { type: ActionType.Draw });
+            // If turn is still on player and they drew a card, pass the turn
+            if (!next.winnerId && next.order[next.currentIndex] === currentId && next.drawnCardId) {
+                next = applyAction(next, currentId, { type: ActionType.Pass });
+            }
+            room.game = next;
+            if (next.winnerId) this.finishRound(room);
+        } catch (err) {
+            console.error("Turn timeout force-draw error:", err);
+        }
+
+        this.touch(room);
+        this.broadcast(room);
+        this.scheduleTurnTimer(room);
+        this.scheduleAutoPlay(room);
     }
 
     /**
@@ -402,6 +463,7 @@ export class RoomManager {
 
     private snapshot(room: Room, playerId: string): RoomView {
         const game = room.game;
+        const roundView = game ? viewFor(game, playerId) : null;
         return {
             code: room.code,
             status: this.statusOf(room),
@@ -416,7 +478,7 @@ export class RoomManager {
                 score: p.score,
             })),
             cardsPerPlayer: room.cardsPerPlayer,
-            round: game ? viewFor(game, playerId) : null,
+            round: roundView,
             lastRoundPoints: room.lastRoundPoints,
             gameWinnerId: room.gameWinnerId,
         };
@@ -496,8 +558,10 @@ export class RoomManager {
     /** For tests and graceful shutdown. */
     dispose(): void {
         clearInterval(this.sweeper);
-        for (const room of this.rooms.values())
+        for (const room of this.rooms.values()) {
             if (room.autoTimer) clearTimeout(room.autoTimer);
+            if (room.turnTimerId) clearTimeout(room.turnTimerId);
+        }
         this.rooms.clear();
     }
 }

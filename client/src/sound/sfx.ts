@@ -276,6 +276,34 @@ const SOUNDS: Record<SfxType, () => void> = {
         tone(180, 0, 0.12, { type: 'square', vol: 0.1, slideTo: 140 });
         tone(150, 0.14, 0.14, { type: 'square', vol: 0.1, slideTo: 110 });
     },
+    // Double Trouble: twin ascending punchy tones
+    [SfxType.DoubleTrouble]: () => {
+        bell(587, 0, 0.18, 0.5);
+        bell(880, 0.12, 0.22, 0.6);
+        noise(0, 0.2, { from: 1000, to: 3000, vol: 0.2, q: 2 });
+    },
+    // Swap Hands: sweeping stereo-like whoosh
+    [SfxType.SwapHands]: () => {
+        noise(0, 0.35, { from: 500, to: 3000, vol: 0.45, q: 1.5 });
+        noise(0.25, 0.35, { from: 3000, to: 500, vol: 0.4, q: 1.5 });
+        chorus(440, 0.1, 0.5, 0.2);
+    },
+    // Snatch: swift grab swish and steal pop
+    [SfxType.Snatch]: () => {
+        noise(0, 0.1, { from: 2800, to: 700, vol: 0.5, q: 2 });
+        bell(1175, 0.08, 0.2, 0.6);
+    },
+    // Shield: protective crystal chime
+    [SfxType.Shield]: () => {
+        bell(1046, 0, 0.4, 0.8);
+        bell(1568, 0.05, 0.5, 0.9);
+        chorus(523, 0, 0.6, 0.25);
+    },
+    // Eliminated: dark low drop gong
+    [SfxType.Eliminated]: () => {
+        tone(130, 0, 0.6, { type: 'sawtooth', vol: 0.25, slideTo: 55 });
+        noise(0, 0.4, { from: 400, to: 100, vol: 0.35, q: 1 });
+    },
 };
 
 export function play(sound: SfxType): void {

@@ -236,6 +236,56 @@ describe("WebSocket game flow", () => {
         g.ws.close();
     });
 
+    test("host updates custom room settings and cards", async () => {
+        const host = await post("/api/rooms", { name: "HostSettings" });
+        const guest = await post(`/api/rooms/${host.json.code}/join`, {
+            name: "GuestSettings",
+        });
+        const h = connect(host.json.code, host.json.token);
+        const g = connect(host.json.code, guest.json.token);
+        await Promise.all([h.opened, g.opened]);
+        await h.next((m) => roomOf(m)?.players.length === 2);
+
+        // Host updates room settings
+        h.ws.send(
+            JSON.stringify({
+                type: "settings",
+                rules: {
+                    stacking: true,
+                    targetScore: 300,
+                    turnTimer: 15,
+                    eliminationLimit: 25,
+                    cards: {
+                        doubleTrouble: true,
+                        swapHands: true,
+                        snatch: true,
+                        shield: true,
+                        wild6: true,
+                        wild10: true,
+                    },
+                },
+            }),
+        );
+
+        const updated = await h.next(
+            (m) =>
+                roomOf(m)?.rules.stacking === true &&
+                roomOf(m)?.rules.turnTimer === 15 &&
+                roomOf(m)?.rules.cards.shield === true,
+        );
+        const rules = roomOf(updated)!.rules;
+        expect(rules.stacking).toBe(true);
+        expect(rules.targetScore).toBe(300);
+        expect(rules.turnTimer).toBe(15);
+        expect(rules.eliminationLimit).toBe(25);
+        expect(rules.cards.doubleTrouble).toBe(true);
+        expect(rules.cards.shield).toBe(true);
+        expect(rules.cards.wild10).toBe(true);
+
+        h.ws.close();
+        g.ws.close();
+    });
+
     test("player leaving mid-game is removed from the room and player list updates", async () => {
         const host = await post("/api/rooms", { name: "HostL" });
         const guest1 = await post(`/api/rooms/${host.json.code}/join`, {

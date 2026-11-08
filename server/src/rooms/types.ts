@@ -1,4 +1,5 @@
 import {
+  DEFAULT_RULES,
   type GameState,
   NAME_MAX_LENGTH,
   ROOM_CODE_LENGTH,
@@ -42,6 +43,8 @@ export interface Room {
   gameWinnerId: string | null;
   lastActive: number;
   autoTimer: ReturnType<typeof setTimeout> | null;
+  turnTimerId: ReturnType<typeof setTimeout> | null;
+  turnDeadline: number | null;
 }
 
 /** Normalises a display name for uniqueness checks ("  Ann " and "ann" collide). */
@@ -73,8 +76,8 @@ export function randomCode(): string {
   return code;
 }
 
-export function normalizeRules(input: Rules): Rules {
-  const targetScore = Math.round(Number(input.targetScore));
+export function normalizeRules(input: Partial<Rules>): Rules {
+  const targetScore = Math.round(Number(input.targetScore ?? DEFAULT_RULES.targetScore));
   if (
     !Number.isFinite(targetScore) ||
     targetScore < 100 ||
@@ -82,8 +85,39 @@ export function normalizeRules(input: Rules): Rules {
   ) {
     throw new RoomError(400, "Target score must be between 100 and 5000");
   }
+
+  let turnTimer = DEFAULT_RULES.turnTimer;
+  if (input.turnTimer !== undefined) {
+    const parsedTimer = Math.round(Number(input.turnTimer));
+    if (!Number.isFinite(parsedTimer) || parsedTimer < 0 || parsedTimer > 300) {
+      throw new RoomError(400, "Turn timer must be between 0 and 300 seconds");
+    }
+    turnTimer = parsedTimer;
+  }
+
+  let eliminationLimit: number | null = null;
+  if (input.eliminationLimit !== undefined && input.eliminationLimit !== null) {
+    const parsedElim = Math.round(Number(input.eliminationLimit));
+    if (!Number.isFinite(parsedElim) || parsedElim < 5 || parsedElim > 50) {
+      throw new RoomError(400, "Elimination limit must be between 5 and 50 cards");
+    }
+    eliminationLimit = parsedElim;
+  }
+
+  const customCards = {
+    doubleTrouble: Boolean(input.cards?.doubleTrouble),
+    swapHands: Boolean(input.cards?.swapHands),
+    snatch: Boolean(input.cards?.snatch),
+    shield: Boolean(input.cards?.shield),
+    wild6: Boolean(input.cards?.wild6),
+    wild10: Boolean(input.cards?.wild10),
+  };
+
   return {
     stacking: Boolean(input.stacking),
     targetScore,
+    turnTimer,
+    eliminationLimit,
+    cards: customCards,
   };
 }

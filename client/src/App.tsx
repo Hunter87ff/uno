@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Game } from './components/Game';
 import { Home } from './components/Home';
 import { Lobby } from './components/Lobby';
+import type { LayoutMode } from './components/RoomSettingsModal';
 import { Button, Toast } from './components/ui';
 import { loadSession, saveSession } from './session';
 import { SoundToggle } from './sound/SoundToggle';
@@ -14,7 +15,21 @@ export default function App() {
     const [session, setSession] = useState<Session | null>(() => loadSession());
     const [notice, setNotice] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
+        if (typeof localStorage !== 'undefined') {
+            const saved = localStorage.getItem('uno.layout');
+            if (saved === 'vertical' || saved === 'horizontal') return saved;
+        }
+        return 'horizontal';
+    });
     const errorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    const changeLayoutMode = useCallback((mode: LayoutMode) => {
+        setLayoutMode(mode);
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('uno.layout', mode);
+        }
+    }, []);
 
     const showError = useCallback((msg: string) => {
         setErrorMessage(msg);
@@ -78,9 +93,23 @@ export default function App() {
     return (
         <>
             {room.status === RoomStatus.Lobby ? (
-                <Lobby room={room} connected={connected} send={send} onLeave={leave} />
+                <Lobby
+                    room={room}
+                    connected={connected}
+                    send={send}
+                    onLeave={leave}
+                    layoutMode={layoutMode}
+                    onChangeLayoutMode={changeLayoutMode}
+                />
             ) : (
-                <Game room={room} connected={connected} send={send} onLeaveTable={leave} />
+                <Game
+                    room={room}
+                    connected={connected}
+                    send={send}
+                    onLeaveTable={leave}
+                    layoutMode={layoutMode}
+                    onChangeLayoutMode={changeLayoutMode}
+                />
             )}
             <Toast message={errorMessage} onDismiss={() => setErrorMessage(null)} />
             <SoundToggle />

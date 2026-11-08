@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CardType, Color, RoomStatus, SfxType, type Card, type PublicRound, type RoomView } from '@uno/shared';
+import { CardType, Color, DEFAULT_RULES, RoomStatus, SfxType, type Card, type PublicRound, type RoomView } from '@uno/shared';
 import { soundsForUpdate } from './events';
 
 const card = (
@@ -17,9 +17,10 @@ const card = (
 function round(overrides: Partial<PublicRound> = {}): PublicRound {
     return {
         order: [
-            { id: 'me', name: 'Me', cardCount: 5 },
-            { id: 'bob', name: 'Bob', cardCount: 5 },
+            { id: 'me', name: 'Me', cardCount: 5, eliminated: false, shielded: false },
+            { id: 'bob', name: 'Bob', cardCount: 5, eliminated: false, shielded: false },
         ],
+        eliminated: [],
         currentId: 'bob',
         direction: 1,
         activeColor: Color.Red,
@@ -32,6 +33,11 @@ function round(overrides: Partial<PublicRound> = {}): PublicRound {
         hand: [],
         playableIds: [],
         drawnCardId: null,
+        extraPlays: 0,
+        shieldedPlayers: [],
+        hasShield: false,
+        turnDeadline: null,
+        eliminationLimit: null,
         log: [],
         ...overrides,
     };
@@ -41,7 +47,7 @@ function room(r: PublicRound | null, status: RoomView['status'] = RoomStatus.Pla
     return {
         code: 'ABCDE',
         status,
-        rules: { stacking: false, targetScore: 500 },
+        rules: { ...DEFAULT_RULES },
         hostId: 'me',
         you: 'me',
         players: [
@@ -73,8 +79,8 @@ describe('soundsForUpdate', () => {
         const after = room(
             round({
                 order: [
-                    { id: 'me', name: 'Me', cardCount: 6 },
-                    { id: 'bob', name: 'Bob', cardCount: 5 },
+                    { id: 'me', name: 'Me', cardCount: 6, eliminated: false, shielded: false },
+                    { id: 'bob', name: 'Bob', cardCount: 5, eliminated: false, shielded: false },
                 ],
             }),
         );
@@ -86,8 +92,8 @@ describe('soundsForUpdate', () => {
             round({
                 unoAlert: 'bob',
                 order: [
-                    { id: 'me', name: 'Me', cardCount: 5 },
-                    { id: 'bob', name: 'Bob', cardCount: 1 },
+                    { id: 'me', name: 'Me', cardCount: 5, eliminated: false, shielded: false },
+                    { id: 'bob', name: 'Bob', cardCount: 1, eliminated: false, shielded: false },
                 ],
             }),
         );
@@ -95,8 +101,8 @@ describe('soundsForUpdate', () => {
             round({
                 unoAlert: null,
                 order: [
-                    { id: 'me', name: 'Me', cardCount: 5 },
-                    { id: 'bob', name: 'Bob', cardCount: 3 },
+                    { id: 'me', name: 'Me', cardCount: 5, eliminated: false, shielded: false },
+                    { id: 'bob', name: 'Bob', cardCount: 3, eliminated: false, shielded: false },
                 ],
             }),
         );

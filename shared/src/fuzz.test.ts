@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { COLORS, SpecialColor } from './cards';
-import { type Action, ActionType, applyAction, type GameState, playError, startRound } from './engine';
+import { type Action, ActionType, DEFAULT_RULES, applyAction, type GameState, playError, startRound } from './engine';
 
 /** Small seeded PRNG so failures are reproducible. */
 function lcg(seed: number) {
@@ -53,7 +53,7 @@ describe('randomized full games keep engine invariants', () => {
             const rng = lcg(1000 + g);
             const n = 2 + (g % 4); // 2..5 players
             const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
-            const rules = { stacking: g % 2 === 0, targetScore: 500 };
+            const rules = { ...DEFAULT_RULES, stacking: g % 2 === 0, targetScore: 500 };
             let s = startRound(players, rules, rng);
             let steps = 0;
 
