@@ -47,7 +47,6 @@ export function Game({
 
 	const [pickingFor, setPickingFor] = useState<Card | null>(null);
 	const [snatchTargeting, setSnatchTargeting] = useState<Card | null>(null);
-	const [selectedSnatchTarget, setSelectedSnatchTarget] = useState<string | null>(null);
 	const [unoArmed, setUnoArmed] = useState(false);
 
 	// Live Turn Timer countdown
@@ -86,13 +85,20 @@ export function Game({
 		}
 		if (!isMyTurn || !playable.has(card.id)) return;
 
-		// Snatch needs target selection first
+		// Snatch needs target selection first, but does not change color
 		if (card.type === CardType.Snatch) {
 			setSnatchTargeting(card);
 			return;
 		}
 
-		// Wild cards need color selection
+		// Double Trouble & Swap Hands do not change color: play immediately!
+		if (card.type === CardType.DoubleTrouble || card.type === CardType.SwapHands) {
+			act({ type: ActionType.Play, cardId: card.id, uno: unoArmed });
+			setUnoArmed(false);
+			return;
+		}
+
+		// Wild color-changing cards need color selection
 		if (isWild(card)) {
 			setPickingFor(card);
 			return;
@@ -104,10 +110,8 @@ export function Game({
 
 	function chooseColor(color: Color) {
 		if (!pickingFor) return;
-		const target = selectedSnatchTarget ?? undefined;
-		act({ type: ActionType.Play, cardId: pickingFor.id, color, uno: unoArmed, target });
+		act({ type: ActionType.Play, cardId: pickingFor.id, color, uno: unoArmed });
 		setPickingFor(null);
-		setSelectedSnatchTarget(null);
 		setUnoArmed(false);
 	}
 
@@ -115,9 +119,8 @@ export function Game({
 		if (!snatchTargeting) return;
 		const card = snatchTargeting;
 		setSnatchTargeting(null);
-		setSelectedSnatchTarget(targetId);
-		// Snatch is also wild, so pick color next
-		setPickingFor(card);
+		act({ type: ActionType.Play, cardId: card.id, uno: unoArmed, target: targetId });
+		setUnoArmed(false);
 	}
 
 	// Seats: opponents in turn order, starting after the viewer.
@@ -617,13 +620,13 @@ function SnatchTargetModal({
 	onCancel: () => void;
 }) {
 	return (
-		<Modal label="Snatch a Card">
+		<Modal label="Snatch Cards">
 			<Panel className="text-center">
 				<h2 className="flex items-center justify-center gap-2 text-lg font-black text-white">
-					<span>🤏 Snatch a Card</span>
+					<span>🤏 Snatch - Swap Hands</span>
 				</h2>
 				<p className="mt-1 text-xs text-white/60">
-					Choose an opponent to take a random card from:
+					Choose an opponent to exchange your entire hand with:
 				</p>
 				<div className="mt-4 flex max-h-60 flex-col gap-2.5 overflow-y-auto">
 					{opponents.length === 0 && (

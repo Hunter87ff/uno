@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { COLORS, SpecialColor } from "./cards";
+import { CardType, changesColor, COLORS, SpecialColor } from "./cards";
 import {
 	type Action,
 	ActionType,
@@ -27,11 +27,19 @@ function legalActions(s: GameState): { pid: string; action: Action }[] {
 	const hand = s.hands[current]!;
 	for (const card of hand) {
 		if (playError(s, current, card) !== null) continue;
-		if (card.color === SpecialColor.Wild) {
+		if (changesColor(card)) {
 			for (const color of COLORS) {
 				out.push({
 					pid: current,
 					action: { type: ActionType.Play, cardId: card.id, color, uno: true },
+				});
+			}
+		} else if (card.type === CardType.Snatch) {
+			const target = s.order.find((p) => p !== current && (s.hands[p]?.length ?? 0) > 0);
+			if (target) {
+				out.push({
+					pid: current,
+					action: { type: ActionType.Play, cardId: card.id, target, uno: true },
 				});
 			}
 		} else {
@@ -74,10 +82,11 @@ describe("randomized full games keep engine invariants", () => {
 			const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
 			const rules = { ...DEFAULT_RULES, stacking: g % 2 === 0, targetScore: 500 };
 			let s = startRound(players, rules, rng);
+			const expectedTotal = totalCards(s);
 			let steps = 0;
 
 			while (!s.winnerId && steps < 4000) {
-				expect(totalCards(s)).toBe(108);
+				expect(totalCards(s)).toBe(expectedTotal);
 				expect(s.pendingDraw).toBeGreaterThanOrEqual(0);
 				if (s.drawnCardId) {
 					const cur = s.order[s.currentIndex]!;

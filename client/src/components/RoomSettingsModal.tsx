@@ -45,12 +45,12 @@ export function RoomSettingsModal({
 	if (!open) return null;
 
 	const cards = rules.cards ?? {
-		doubleTrouble: false,
-		swapHands: false,
-		snatch: false,
-		shield: false,
-		wild6: false,
-		wild10: false,
+		doubleTrouble: true,
+		swapHands: true,
+		snatch: true,
+		shield: true,
+		wild6: true,
+		wild10: true,
 	};
 
 	const updateCard = (key: keyof CustomCardSettings, value: boolean) => {
@@ -278,7 +278,7 @@ export function RoomSettingsModal({
 							<SwitchRow
 								badge="🤏"
 								label="Snatch"
-								description="Allows a player to seize a random card from a chosen opponent."
+								description="Allows a player to swap their entire hand of cards with a chosen opponent."
 								checked={cards.snatch}
 								disabled={!isHost}
 								onChange={(v) => updateCard("snatch", v)}

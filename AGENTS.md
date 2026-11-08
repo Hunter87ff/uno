@@ -169,7 +169,7 @@ _Last updated: 2026-11-08 (implemented changes.md: dedicated room configuration,
     - **Custom Expansion Cards**:
         - "Double Trouble": allows player to play two cards in one turn.
         - "Swap Hands": rotates all players' hands in play direction.
-        - "Snatch": takes a random card from a chosen opponent.
+        - "Snatch": swaps the player's entire hand with a chosen opponent (1-on-1 hand exchange).
         - "Shield": protects player from negative effects for one turn; 1 in deck, usable anytime (even out of turn).
         - "Plus Six (+6)" & "Plus Ten (+10)": wild cards adding 6 or 10 pending draws.
         - Pure SVG/CSS icons and corner glyphs designed for all cards in `client/src/components/Card.tsx`.
@@ -181,10 +181,13 @@ _Last updated: 2026-11-08 (implemented changes.md: dedicated room configuration,
 - Synthesized Web Audio effects for all new actions and card events (`DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Eliminated`).
 - Added comprehensive unit and integration test coverage for all new card mechanics, stacking rules, elimination, and settings updates.
 - Fixed round scoring bug when players are eliminated: card points from eliminated players' hands are preserved in `eliminatedPoints` and awarded to the round winner, and scoreboard ranks the winner above opponents on tied points.
+- Enabled all custom cards by default in `DEFAULT_CUSTOM_CARDS`, `DEFAULT_RULES`, server rule normalization, and the room settings UI.
+- Updated Swap Hands, Double Trouble, Snatch, and Shield mechanics to preserve current active color instead of prompting for a color change.
+- Updated Snatch card mechanic to execute a complete 1-on-1 hand swap between the player and their selected opponent.
 
 ### Verified
 
-- `bun test`: 70 tests pass across 4 test suites (`shared`, `server`, `client/sound`).
+- `bun test`: 73 tests pass across 4 test suites (`shared`, `server`, `client/sound`).
 - `bun run typecheck`: clean across all 3 workspaces (`@uno/shared`, `@uno/server`, `@uno/client`).
 - `bun run build`: production client build succeeds.
 

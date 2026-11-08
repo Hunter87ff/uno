@@ -3,11 +3,13 @@ import {
 	type Card,
 	cardPoints,
 	CardType,
+	changesColor,
 	Color,
 	COLORS,
 	type CustomCardSettings,
 	DEFAULT_CUSTOM_CARDS,
 	isWild,
+	keepsCurrentColor,
 	shuffle,
 	SpecialColor,
 } from "./cards";
@@ -132,7 +134,7 @@ export function plusValue(card: Card): number | null {
 
 export function describeCard(card: Card, color: Color | SpecialColor.Wild = card.color): string {
 	const label = card.type === CardType.Number ? String(card.value) : LABELS[card.type];
-	return color === SpecialColor.Wild ? label : `${color} ${label}`;
+	return color === SpecialColor.Wild || keepsCurrentColor(card) ? label : `${color} ${label}`;
 }
 
 function mod(n: number, m: number): number {
@@ -465,6 +467,9 @@ function doPlayShield(s: GameState, pid: string, cardId: string): GameState {
 
 	hand.splice(index, 1);
 	s.discardPile.push(card);
+	if (s.drawnCardId === cardId) {
+		s.drawnCardId = null;
+	}
 	log(s, `${nameOf(s, pid)} activated a Shield!`);
 
 	// If it's pid's turn and facing pending draws, absorb them immediately
@@ -505,11 +510,13 @@ function doPlay(
 	if (err) throw new GameError(err);
 
 	let chosen: Color;
-	if (isWild(card)) {
+	if (changesColor(card)) {
 		if (!action.color || !(COLORS as readonly string[]).includes(action.color)) {
 			throw new GameError("Choose a color for the wild card");
 		}
 		chosen = action.color;
+	} else if (keepsCurrentColor(card)) {
+		chosen = s.activeColor;
 	} else {
 		chosen = card.color as Color;
 	}
@@ -561,9 +568,9 @@ function doPlay(
 		return s;
 	}
 
-	// Snatch: take a random card from another player
+	// Snatch: swap all cards directly between player and chosen target player
 	if (card.type === CardType.Snatch) {
-		if (!action.target) throw new GameError("Choose a player to snatch from");
+		if (!action.target) throw new GameError("Choose a player to snatch cards from");
 		const targetId = action.target;
 		if (!s.order.includes(targetId) || targetId === pid) {
 			throw new GameError("Invalid target player for snatch");
@@ -572,20 +579,32 @@ function doPlay(
 			s.shielded[targetId] = false;
 			log(
 				s,
-				`${nameOf(s, pid)} tried to snatch a card from ${nameOf(s, targetId)}, but their Shield protected them!`,
+				`${nameOf(s, pid)} tried to snatch cards from ${nameOf(s, targetId)}, but their Shield protected them!`,
 			);
 		} else {
 			const targetHand = s.hands[targetId] ?? [];
-			if (targetHand.length > 0) {
-				const randIdx = Math.floor(Math.random() * targetHand.length);
-				const [stolen] = targetHand.splice(randIdx, 1);
-				if (stolen) {
-					hand.push(stolen);
-					log(s, `${nameOf(s, pid)} snatched a card from ${nameOf(s, targetId)}!`);
-					checkElimination(s, pid);
-					if (s.winnerId) return s;
-				}
+			const myRemainingHand = [...hand];
+			s.hands[pid] = [...targetHand];
+			s.hands[targetId] = myRemainingHand;
+			log(s, `${nameOf(s, pid)} snatched ${nameOf(s, targetId)}'s hand! They swapped cards.`);
+
+			if (s.unoAlert === pid && s.hands[pid].length !== 1) s.unoAlert = null;
+			if (s.unoAlert === targetId && s.hands[targetId].length !== 1) s.unoAlert = null;
+
+			if (s.hands[pid].length === 0) {
+				s.winnerId = pid;
+				log(s, `${nameOf(s, pid)} went out and won the round!`);
+				return s;
 			}
+			if (s.hands[targetId].length === 0) {
+				s.winnerId = targetId;
+				log(s, `${nameOf(s, targetId)} went out and won the round!`);
+				return s;
+			}
+
+			checkElimination(s, pid);
+			checkElimination(s, targetId);
+			if (s.winnerId) return s;
 		}
 
 		if (s.extraPlays > 0) {
@@ -754,10 +773,14 @@ export function suggestAction(s: GameState, pid: string): Action {
 	const playable = hand.filter((c) => isPlayable(s, pid, c));
 	if (playable.length > 0) {
 		const card = playable.find((c) => !isWild(c)) ?? playable[0]!;
-		const color = isWild(card) ? mostCommonColor(hand) : undefined;
+		const color = changesColor(card) ? mostCommonColor(hand) : undefined;
 		let target: string | undefined = undefined;
 		if (card.type === CardType.Snatch) {
-			target = s.order.find((id) => id !== pid && (s.hands[id]?.length ?? 0) > 0);
+			const opponents = s.order.filter((id) => id !== pid && (s.hands[id]?.length ?? 0) > 0);
+			if (opponents.length > 0) {
+				opponents.sort((a, b) => (s.hands[a]?.length ?? 0) - (s.hands[b]?.length ?? 0));
+				target = opponents[0];
+			}
 		}
 		return {
 			type: ActionType.Play,

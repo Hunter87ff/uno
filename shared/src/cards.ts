@@ -20,27 +20,41 @@ export interface CustomCardSettings {
 }
 
 export const DEFAULT_CUSTOM_CARDS: CustomCardSettings = {
-	doubleTrouble: false,
-	swapHands: false,
-	snatch: false,
-	shield: false,
-	wild6: false,
-	wild10: false,
+	doubleTrouble: true,
+	swapHands: true,
+	snatch: true,
+	shield: true,
+	wild6: true,
+	wild10: true,
 };
 
 export const ACTION_POINTS = 20;
 export const WILD_POINTS = 50;
 
-export function isWild(card: Card): boolean {
+/** Cards that prompt for a color choice and change the active color. */
+export function changesColor(card: Card): boolean {
 	return (
 		card.type === CardType.Wild ||
 		card.type === CardType.Wild4 ||
+		card.type === CardType.Wild6 ||
+		card.type === CardType.Wild10
+	);
+}
+
+/** Cards that are universally playable without matching color, but keep the current active color going. */
+export function keepsCurrentColor(card: Card): boolean {
+	return (
 		card.type === CardType.DoubleTrouble ||
 		card.type === CardType.SwapHands ||
 		card.type === CardType.Snatch ||
-		card.type === CardType.Shield ||
-		card.type === CardType.Wild6 ||
-		card.type === CardType.Wild10
+		card.type === CardType.Shield
+	);
+}
+
+export function isWild(card: Card): boolean {
+	return (
+		changesColor(card) ||
+		keepsCurrentColor(card)
 	);
 }
 

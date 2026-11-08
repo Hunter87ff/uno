@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildDeck, type Card, CardType, Color, COLORS, SpecialColor } from "./cards";
+import {
+	buildDeck,
+	type Card,
+	CardType,
+	changesColor,
+	Color,
+	COLORS,
+	DEFAULT_CUSTOM_CARDS,
+	keepsCurrentColor,
+	SpecialColor,
+} from "./cards";
 import {
 	ActionType,
 	applyAction,
@@ -79,6 +89,52 @@ describe("deck", () => {
 			);
 		}
 	});
+
+	test("DEFAULT_CUSTOM_CARDS enables all custom expansion cards by default", () => {
+		expect(DEFAULT_CUSTOM_CARDS).toEqual({
+			doubleTrouble: true,
+			swapHands: true,
+			snatch: true,
+			shield: true,
+			wild6: true,
+			wild10: true,
+		});
+
+		const defaultDeck = buildDeck(DEFAULT_CUSTOM_CARDS);
+		expect(defaultDeck.length).toBe(119);
+		expect(defaultDeck.filter((c) => c.type === CardType.DoubleTrouble).length).toBe(2);
+		expect(defaultDeck.filter((c) => c.type === CardType.SwapHands).length).toBe(2);
+		expect(defaultDeck.filter((c) => c.type === CardType.Snatch).length).toBe(2);
+		expect(defaultDeck.filter((c) => c.type === CardType.Shield).length).toBe(1);
+		expect(defaultDeck.filter((c) => c.type === CardType.Wild6).length).toBe(2);
+		expect(defaultDeck.filter((c) => c.type === CardType.Wild10).length).toBe(2);
+	});
+
+	test("identifies cards that change color vs keep current active color", () => {
+		const wild = card("w", CardType.Wild, SpecialColor.Wild);
+		const wild4 = card("w4", CardType.Wild4, SpecialColor.Wild);
+		const wild6 = card("w6", CardType.Wild6, SpecialColor.Wild);
+		const wild10 = card("w10", CardType.Wild10, SpecialColor.Wild);
+		const dt = card("dt", CardType.DoubleTrouble, SpecialColor.Wild);
+		const sh = card("sh", CardType.SwapHands, SpecialColor.Wild);
+		const sn = card("sn", CardType.Snatch, SpecialColor.Wild);
+		const shield = card("shld", CardType.Shield, SpecialColor.Wild);
+
+		expect(changesColor(wild)).toBe(true);
+		expect(changesColor(wild4)).toBe(true);
+		expect(changesColor(wild6)).toBe(true);
+		expect(changesColor(wild10)).toBe(true);
+
+		expect(changesColor(dt)).toBe(false);
+		expect(changesColor(sh)).toBe(false);
+		expect(changesColor(sn)).toBe(false);
+		expect(changesColor(shield)).toBe(false);
+
+		expect(keepsCurrentColor(dt)).toBe(true);
+		expect(keepsCurrentColor(sh)).toBe(true);
+		expect(keepsCurrentColor(sn)).toBe(true);
+		expect(keepsCurrentColor(shield)).toBe(true);
+	});
 });
 
 describe("startRound", () => {
@@ -89,7 +145,7 @@ describe("startRound", () => {
 		expect(s.discardPile[0]!.type).not.toBe(CardType.Wild4);
 		expect(
 			s.hands.a!.length + s.hands.b!.length + s.hands.c!.length + s.drawPile.length + 1,
-		).toBe(108);
+		).toBe(buildDeck(DEFAULT_RULES.cards).length);
 	});
 
 	test("deals the requested number of cards and rejects impossible counts", () => {
@@ -102,7 +158,7 @@ describe("startRound", () => {
 			"between 2 and 15",
 		);
 		const ten = Array.from({ length: 10 }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
-		expect(() => startRound(ten, DEFAULT_RULES, Math.random, 11)).toThrow("do not fit");
+		expect(() => startRound(ten, DEFAULT_RULES, Math.random, 12)).toThrow("do not fit");
 		expect(() => startRound(ten, DEFAULT_RULES, Math.random, 10)).not.toThrow();
 	});
 
@@ -565,12 +621,13 @@ describe("plus card stacking", () => {
 });
 
 describe("new cards: Double Trouble", () => {
-	test("allows playing two cards in one turn", () => {
+	test("allows playing two cards in one turn and preserves current active color", () => {
 		let s = setup({
+			activeColor: Color.Red,
 			hands: {
 				a: [
 					card("dt", CardType.DoubleTrouble, SpecialColor.Wild),
-					card("n1", CardType.Number, Color.Blue, 5),
+					card("n1", CardType.Number, Color.Red, 5),
 					card("n2", CardType.Number, Color.Yellow, 2),
 				],
 				b: [card("b1", CardType.Number, Color.Red, 1)],
@@ -578,12 +635,13 @@ describe("new cards: Double Trouble", () => {
 			},
 		});
 
-		// Player A plays Double Trouble
-		s = applyAction(s, "a", { type: ActionType.Play, cardId: "dt", color: Color.Blue });
+		// Player A plays Double Trouble without choosing a color
+		s = applyAction(s, "a", { type: ActionType.Play, cardId: "dt" });
 		expect(s.extraPlays).toBe(1);
+		expect(s.activeColor).toBe(Color.Red); // keeps active color
 		expect(s.order[s.currentIndex]).toBe("a"); // turn stays with player A!
 
-		// Player A plays their second card
+		// Player A plays their second card matching the active color
 		s = applyAction(s, "a", { type: ActionType.Play, cardId: "n1" });
 		expect(s.extraPlays).toBe(0);
 		expect(s.order[s.currentIndex]).toBe("b"); // turn now advances to player B!
@@ -591,8 +649,9 @@ describe("new cards: Double Trouble", () => {
 });
 
 describe("new cards: Swap Hands", () => {
-	test("all players swap their hands in current direction", () => {
+	test("all players swap their hands in current direction and preserves color", () => {
 		let s = setup({
+			activeColor: Color.Green,
 			hands: {
 				a: [card("sh", CardType.SwapHands, SpecialColor.Wild)],
 				b: [
@@ -603,12 +662,14 @@ describe("new cards: Swap Hands", () => {
 			},
 		});
 
-		s = applyAction(s, "a", { type: ActionType.Play, cardId: "sh", color: Color.Red });
+		s = applyAction(s, "a", { type: ActionType.Play, cardId: "sh" });
+		expect(s.activeColor).toBe(Color.Green);
 		expect(s.winnerId).toBe("a");
 	});
 
 	test("swaps hands when players have cards remaining", () => {
 		let s = setup({
+			activeColor: Color.Red,
 			hands: {
 				a: [
 					card("sh", CardType.SwapHands, SpecialColor.Wild),
@@ -622,8 +683,9 @@ describe("new cards: Swap Hands", () => {
 			},
 		});
 
-		s = applyAction(s, "a", { type: ActionType.Play, cardId: "sh", color: Color.Red });
+		s = applyAction(s, "a", { type: ActionType.Play, cardId: "sh" });
 
+		expect(s.activeColor).toBe(Color.Red);
 		expect(s.hands.a!.map((c) => c.id)).toEqual(["c1"]);
 		expect(s.hands.b!.map((c) => c.id)).toEqual(["a1"]);
 		expect(s.hands.c!.map((c) => c.id)).toEqual(["b1", "b2"]);
@@ -632,14 +694,16 @@ describe("new cards: Swap Hands", () => {
 });
 
 describe("new cards: Snatch", () => {
-	test("takes a random card from the target player", () => {
+	test("swaps entire hand directly with the target player and preserves color", () => {
 		let s = setup({
+			activeColor: Color.Yellow,
 			hands: {
 				a: [
 					card("sn", CardType.Snatch, SpecialColor.Wild),
-					card("extra_a", CardType.Number, Color.Red, 1),
+					card("a1", CardType.Number, Color.Red, 1),
+					card("a2", CardType.Number, Color.Blue, 2),
 				],
-				b: [card("b1", CardType.Number, Color.Blue, 1)],
+				b: [card("b1", CardType.Number, Color.Green, 5)],
 				c: [card("c1", CardType.Number, Color.Green, 3)],
 			},
 		});
@@ -647,13 +711,40 @@ describe("new cards: Snatch", () => {
 		s = applyAction(s, "a", {
 			type: ActionType.Play,
 			cardId: "sn",
-			color: Color.Blue,
 			target: "b",
 		});
-		// Target b had 1 card; a snatched it!
-		expect(s.hands.b!.length).toBe(0);
-		expect(s.hands.a!.length).toBe(2);
-		expect(s.hands.a!.some((c) => c.id === "b1")).toBe(true);
+		// Player a had [sn, a1, a2]. sn was played, leaving [a1, a2].
+		// Player b had [b1]. They swap hands:
+		expect(s.activeColor).toBe(Color.Yellow);
+		expect(s.hands.a!.map((c) => c.id)).toEqual(["b1"]);
+		expect(s.hands.b!.map((c) => c.id)).toEqual(["a1", "a2"]);
+		expect(s.hands.c!.map((c) => c.id)).toEqual(["c1"]);
+		expect(s.order[s.currentIndex]).toBe("b");
+	});
+
+	test("shield protects target from snatch swap", () => {
+		let s = setup({
+			activeColor: Color.Yellow,
+			shielded: { b: true },
+			hands: {
+				a: [
+					card("sn", CardType.Snatch, SpecialColor.Wild),
+					card("a1", CardType.Number, Color.Red, 1),
+				],
+				b: [card("b1", CardType.Number, Color.Green, 5)],
+				c: [card("c1", CardType.Number, Color.Green, 3)],
+			},
+		});
+
+		s = applyAction(s, "a", {
+			type: ActionType.Play,
+			cardId: "sn",
+			target: "b",
+		});
+		// Shield absorbed the snatch: hands remain unchanged!
+		expect(s.shielded.b).toBe(false);
+		expect(s.hands.a!.map((c) => c.id)).toEqual(["a1"]);
+		expect(s.hands.b!.map((c) => c.id)).toEqual(["b1"]);
 		expect(s.order[s.currentIndex]).toBe("b");
 	});
 });

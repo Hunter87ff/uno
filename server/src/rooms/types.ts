@@ -95,12 +95,12 @@ export function normalizeRules(input: Partial<Rules>): Rules {
 	}
 
 	const customCards = {
-		doubleTrouble: Boolean(input.cards?.doubleTrouble),
-		swapHands: Boolean(input.cards?.swapHands),
-		snatch: Boolean(input.cards?.snatch),
-		shield: Boolean(input.cards?.shield),
-		wild6: Boolean(input.cards?.wild6),
-		wild10: Boolean(input.cards?.wild10),
+		doubleTrouble: input.cards?.doubleTrouble ?? DEFAULT_RULES.cards.doubleTrouble,
+		swapHands: input.cards?.swapHands ?? DEFAULT_RULES.cards.swapHands,
+		snatch: input.cards?.snatch ?? DEFAULT_RULES.cards.snatch,
+		shield: input.cards?.shield ?? DEFAULT_RULES.cards.shield,
+		wild6: input.cards?.wild6 ?? DEFAULT_RULES.cards.wild6,
+		wild10: input.cards?.wild10 ?? DEFAULT_RULES.cards.wild10,
 	};
 
 	return {
