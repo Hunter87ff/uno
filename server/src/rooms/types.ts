@@ -1,123 +1,113 @@
 import {
-  DEFAULT_RULES,
-  type GameState,
-  NAME_MAX_LENGTH,
-  ROOM_CODE_LENGTH,
-  type Rules,
-  type ServerMessage,
+	DEFAULT_RULES,
+	type GameState,
+	NAME_MAX_LENGTH,
+	ROOM_CODE_LENGTH,
+	type Rules,
+	type ServerMessage,
 } from "@uno/shared";
+
 import { config } from "../config";
 
 /** Anything that can receive server messages (a WebSocket in production, a stub in tests). */
 export interface Sender {
-  send(message: ServerMessage): unknown;
-  close?(code: number, reason: string): unknown;
+	send(message: ServerMessage): unknown;
+	close?(code: number, reason: string): unknown;
 }
 
 export class RoomError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "RoomError";
-  }
+	constructor(
+		public status: number,
+		message: string,
+	) {
+		super(message);
+		this.name = "RoomError";
+	}
 }
 
 export interface PlayerRecord {
-  id: string;
-  name: string;
-  token: string;
-  score: number;
-  socket: Sender | null;
+	id: string;
+	name: string;
+	token: string;
+	score: number;
+	socket: Sender | null;
 }
 
 export interface Room {
-  code: string;
-  hostId: string;
-  rules: Rules;
-  cardsPerPlayer: number;
-  players: PlayerRecord[];
-  game: GameState | null;
-  lastRoundPoints: number | null;
-  gameWinnerId: string | null;
-  lastActive: number;
-  autoTimer: ReturnType<typeof setTimeout> | null;
-  turnTimerId: ReturnType<typeof setTimeout> | null;
-  turnDeadline: number | null;
+	code: string;
+	hostId: string;
+	rules: Rules;
+	cardsPerPlayer: number;
+	players: PlayerRecord[];
+	game: GameState | null;
+	lastRoundPoints: number | null;
+	gameWinnerId: string | null;
+	lastActive: number;
+	autoTimer: ReturnType<typeof setTimeout> | null;
+	turnTimerId: ReturnType<typeof setTimeout> | null;
+	turnDeadline: number | null;
 }
 
-/** Normalises a display name for uniqueness checks ("  Ann " and "ann" collide). */
+/** Normalises a display name for uniqueness checks (" Ann " and "ann" collide). */
 export function normalizeName(name: string): string {
-  return name.trim().replace(/\s+/g, " ");
+	return name.trim().replace(/\s+/g, " ");
 }
 
 export function validateName(raw: string): string {
-  const name = normalizeName(raw);
-  if (name.length < 1) throw new RoomError(400, "Name is required");
-  if (name.length > NAME_MAX_LENGTH)
-    throw new RoomError(
-      400,
-      `Name must be ${NAME_MAX_LENGTH} characters or fewer`,
-    );
-  if (/[\u0000-\u001f]/.test(name))
-    throw new RoomError(400, "Name contains invalid characters");
-  return name;
+	const name = normalizeName(raw);
+	if (name.length < 1) throw new RoomError(400, "Name is required");
+	if (name.length > NAME_MAX_LENGTH)
+		throw new RoomError(400, `Name must be ${NAME_MAX_LENGTH} characters or fewer`);
+	if (/[\u0000-\u001f]/.test(name)) throw new RoomError(400, "Name contains invalid characters");
+	return name;
 }
 
 export function randomCode(): string {
-  let code = "";
-  for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
-    code +=
-      config.codeAlphabet[
-        Math.floor(Math.random() * config.codeAlphabet.length)
-      ];
-  }
-  return code;
+	let code = "";
+	for (let i = 0; i < ROOM_CODE_LENGTH; i++) {
+		code += config.codeAlphabet[Math.floor(Math.random() * config.codeAlphabet.length)];
+	}
+	return code;
 }
 
 export function normalizeRules(input: Partial<Rules>): Rules {
-  const targetScore = Math.round(Number(input.targetScore ?? DEFAULT_RULES.targetScore));
-  if (
-    !Number.isFinite(targetScore) ||
-    targetScore < 100 ||
-    targetScore > 5000
-  ) {
-    throw new RoomError(400, "Target score must be between 100 and 5000");
-  }
+	const targetScore = Math.round(Number(input.targetScore ?? DEFAULT_RULES.targetScore));
+	if (!Number.isFinite(targetScore) || targetScore < 100 || targetScore > 5000) {
+		throw new RoomError(400, "Target score must be between 100 and 5000");
+	}
 
-  let turnTimer = DEFAULT_RULES.turnTimer;
-  if (input.turnTimer !== undefined) {
-    const parsedTimer = Math.round(Number(input.turnTimer));
-    if (!Number.isFinite(parsedTimer) || parsedTimer < 0 || parsedTimer > 300) {
-      throw new RoomError(400, "Turn timer must be between 0 and 300 seconds");
-    }
-    turnTimer = parsedTimer;
-  }
+	let turnTimer = DEFAULT_RULES.turnTimer;
+	if (input.turnTimer !== undefined) {
+		const parsedTimer = Math.round(Number(input.turnTimer));
+		if (!Number.isFinite(parsedTimer) || parsedTimer < 0 || parsedTimer > 300) {
+			throw new RoomError(400, "Turn timer must be between 0 and 300 seconds");
+		}
+		turnTimer = parsedTimer;
+	}
 
-  let eliminationLimit: number | null = null;
-  if (input.eliminationLimit !== undefined && input.eliminationLimit !== null) {
-    const parsedElim = Math.round(Number(input.eliminationLimit));
-    if (!Number.isFinite(parsedElim) || parsedElim < 5 || parsedElim > 50) {
-      throw new RoomError(400, "Elimination limit must be between 5 and 50 cards");
-    }
-    eliminationLimit = parsedElim;
-  }
+	let eliminationLimit: number | null = null;
+	if (input.eliminationLimit !== undefined && input.eliminationLimit !== null) {
+		const parsedElim = Math.round(Number(input.eliminationLimit));
+		if (!Number.isFinite(parsedElim) || parsedElim < 5 || parsedElim > 50) {
+			throw new RoomError(400, "Elimination limit must be between 5 and 50 cards");
+		}
+		eliminationLimit = parsedElim;
+	}
 
-  const customCards = {
-    doubleTrouble: Boolean(input.cards?.doubleTrouble),
-    swapHands: Boolean(input.cards?.swapHands),
-    snatch: Boolean(input.cards?.snatch),
-    shield: Boolean(input.cards?.shield),
-    wild6: Boolean(input.cards?.wild6),
-    wild10: Boolean(input.cards?.wild10),
-  };
+	const customCards = {
+		doubleTrouble: Boolean(input.cards?.doubleTrouble),
+		swapHands: Boolean(input.cards?.swapHands),
+		snatch: Boolean(input.cards?.snatch),
+		shield: Boolean(input.cards?.shield),
+		wild6: Boolean(input.cards?.wild6),
+		wild10: Boolean(input.cards?.wild10),
+	};
 
-  return {
-    stacking: Boolean(input.stacking),
-    targetScore,
-    turnTimer,
-    eliminationLimit,
-    cards: customCards,
-  };
+	return {
+		stacking: Boolean(input.stacking),
+		targetScore,
+		turnTimer,
+		eliminationLimit,
+		cards: customCards,
+	};
 }

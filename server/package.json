@@ -1,16 +1,16 @@
 {
-  "name": "@uno/server",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@elysiajs/cors": "^1.4.2",
-    "@uno/shared": "workspace:*",
-    "elysia": "^1.4.30"
-  }
+	"name": "@uno/server",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "bun --watch src/index.ts",
+		"start": "bun src/index.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elysiajs/cors": "^1.4.2",
+		"@uno/shared": "workspace:*",
+		"elysia": "^1.4.30"
+	}
 }

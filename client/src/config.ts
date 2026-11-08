@@ -8,12 +8,15 @@
  *
  * Set VITE_SERVER_URL in client/.env to point somewhere else.
  */
-const DEV_SERVER_URL = 'http://localhost:3001';
+const DEV_SERVER_URL = "http://localhost:3001";
 
 export const SERVER_URL: string =
-  import.meta.env.VITE_SERVER_URL ?? (import.meta.env.DEV ? DEV_SERVER_URL : '');
+	import.meta.env.VITE_SERVER_URL ?? (import.meta.env.DEV ? DEV_SERVER_URL : "");
 
-/** WebSocket base: derived from SERVER_URL, or from the page's own origin when SERVER_URL is relative. */
+/**
+ * WebSocket base: derived from SERVER_URL, or from the page's own origin when SERVER_URL is
+ * relative.
+ */
 export const WS_URL: string = SERVER_URL
-  ? SERVER_URL.replace(/^http/, 'ws')
-  : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+	? SERVER_URL.replace(/^http/, "ws")
+	: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;

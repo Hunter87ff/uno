@@ -1,17 +1,17 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["bun"],
-    "strict": true,
-    "noUncheckedIndexedAccess": false,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": false,
-    "resolveJsonModule": true
-  }
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["bun"],
+		"strict": true,
+		"noUncheckedIndexedAccess": false,
+		"noEmit": true,
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": false,
+		"resolveJsonModule": true
+	}
 }

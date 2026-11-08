@@ -1,6 +1,8 @@
-import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+
 import { RoomStatus, type RoomView, type ServerMessage } from "@uno/shared";
+
 import { config } from "./config";
 import { app, rooms } from "./index";
 
@@ -9,432 +11,403 @@ let wsBase = "";
 let server: ReturnType<typeof app.listen>;
 
 beforeAll(() => {
-    server = app.listen(0);
-    const port = server.server!.port;
-    base = `http://localhost:${port}`;
-    wsBase = `ws://localhost:${port}`;
+	server = app.listen(0);
+	const port = server.server!.port;
+	base = `http://localhost:${port}`;
+	wsBase = `ws://localhost:${port}`;
 });
 
 afterAll(() => {
-    server.stop(true);
-    rooms.dispose();
+	server.stop(true);
+	rooms.dispose();
 });
 
 async function post(path: string, body: unknown) {
-    const res = await fetch(base + path, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    return { status: res.status, json: (await res.json()) as any };
+	const res = await fetch(base + path, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
+	return { status: res.status, json: (await res.json()) as any };
 }
 
 /** Opens a socket and collects room snapshots; resolves once a snapshot matching `until` arrives. */
 function connect(code: string, token: string) {
-    const ws = new WebSocket(`${wsBase}/ws?room=${code}&token=${token}`);
-    const inbox: ServerMessage[] = [];
-    let waiters: Array<() => void> = [];
-    ws.onmessage = (ev) => {
-        inbox.push(JSON.parse(String(ev.data)));
-        waiters.forEach((w) => w());
-        waiters = [];
-    };
-    const next = (pred: (m: ServerMessage) => boolean, timeoutMs = 3000) =>
-        new Promise<ServerMessage>((resolve, reject) => {
-            const check = () => {
-                const found = inbox.find(pred);
-                if (found) return resolve(found);
-                waiters.push(check);
-            };
-            setTimeout(
-                () => reject(new Error("timed out waiting for message")),
-                timeoutMs,
-            );
-            check();
-        });
-    const opened = new Promise<void>((resolve, reject) => {
-        ws.onopen = () => resolve();
-        ws.onerror = () => reject(new Error("ws error"));
-    });
-    return { ws, next, opened };
+	const ws = new WebSocket(`${wsBase}/ws?room=${code}&token=${token}`);
+	const inbox: ServerMessage[] = [];
+	let waiters: Array<() => void> = [];
+	ws.onmessage = (ev) => {
+		inbox.push(JSON.parse(String(ev.data)));
+		waiters.forEach((w) => w());
+		waiters = [];
+	};
+	const next = (pred: (m: ServerMessage) => boolean, timeoutMs = 3000) =>
+		new Promise<ServerMessage>((resolve, reject) => {
+			const check = () => {
+				const found = inbox.find(pred);
+				if (found) return resolve(found);
+				waiters.push(check);
+			};
+			setTimeout(() => reject(new Error("timed out waiting for message")), timeoutMs);
+			check();
+		});
+	const opened = new Promise<void>((resolve, reject) => {
+		ws.onopen = () => resolve();
+		ws.onerror = () => reject(new Error("ws error"));
+	});
+	return { ws, next, opened };
 }
 
-const roomOf = (m: ServerMessage): RoomView | null =>
-    m.type === "room" ? m.room : null;
+const roomOf = (m: ServerMessage): RoomView | null => (m.type === "room" ? m.room : null);
 
 describe("REST", () => {
-    test("health endpoint returns process metrics, memory, uptime, and room stats", async () => {
-        const res = await fetch(`${base}/api/health`);
-        expect(res.status).toBe(200);
-        const data = (await res.json()) as any;
-        expect(data.status).toBe("ok");
-        expect(typeof data.uptimeSeconds).toBe("number");
-        expect(typeof data.memory).toBe("string");
-        expect(typeof data.cpu).toBe("string");
-        expect(data.cpu.endsWith("%")).toBe(true);
-        expect(data.connections).toBeDefined();
-        expect(typeof data.connections.concurrentSockets).toBe("number");
-        expect(typeof data.rooms.total).toBe("number");
-    });
+	test("health endpoint returns process metrics, memory, uptime, and room stats", async () => {
+		const res = await fetch(`${base}/api/health`);
+		expect(res.status).toBe(200);
+		const data = (await res.json()) as any;
+		expect(data.status).toBe("ok");
+		expect(typeof data.uptimeSeconds).toBe("number");
+		expect(typeof data.memory).toBe("string");
+		expect(typeof data.cpu).toBe("string");
+		expect(data.cpu.endsWith("%")).toBe(true);
+		expect(data.connections).toBeDefined();
+		expect(typeof data.connections.concurrentSockets).toBe("number");
+		expect(typeof data.rooms.total).toBe("number");
+	});
 
-    test("creates a room and returns a session", async () => {
-        const { status, json } = await post("/api/rooms", { name: "Host" });
-        expect(status).toBe(200);
-        expect(json.code).toHaveLength(5);
-        expect(json.token).toBeTruthy();
-    });
+	test("creates a room and returns a session", async () => {
+		const { status, json } = await post("/api/rooms", { name: "Host" });
+		expect(status).toBe(200);
+		expect(json.code).toHaveLength(5);
+		expect(json.token).toBeTruthy();
+	});
 
-    test("rejects duplicate names within a room (case and spacing insensitive)", async () => {
-        const room = await post("/api/rooms", { name: "Alice" });
-        const ok = await post(`/api/rooms/${room.json.code}/join`, { name: "Bob" });
-        expect(ok.status).toBe(200);
-        const dup = await post(`/api/rooms/${room.json.code}/join`, {
-            name: "  bob ",
-        });
-        expect(dup.status).toBe(409);
-        expect(dup.json.message).toContain("already taken");
-    });
+	test("rejects duplicate names within a room (case and spacing insensitive)", async () => {
+		const room = await post("/api/rooms", { name: "Alice" });
+		const ok = await post(`/api/rooms/${room.json.code}/join`, { name: "Bob" });
+		expect(ok.status).toBe(200);
+		const dup = await post(`/api/rooms/${room.json.code}/join`, {
+			name: "  bob ",
+		});
+		expect(dup.status).toBe(409);
+		expect(dup.json.message).toContain("already taken");
+	});
 
-    test("same name is fine in a different room", async () => {
-        const a = await post("/api/rooms", { name: "Shared" });
-        const b = await post("/api/rooms", { name: "Shared" });
-        expect(a.json.code).not.toBe(b.json.code);
-        expect(b.status).toBe(200);
-    });
+	test("same name is fine in a different room", async () => {
+		const a = await post("/api/rooms", { name: "Shared" });
+		const b = await post("/api/rooms", { name: "Shared" });
+		expect(a.json.code).not.toBe(b.json.code);
+		expect(b.status).toBe(200);
+	});
 
-    test("unknown room returns 404", async () => {
-        const res = await fetch(`${base}/api/rooms/ZZZZZ`);
-        expect(res.status).toBe(404);
-    });
+	test("unknown room returns 404", async () => {
+		const res = await fetch(`${base}/api/rooms/ZZZZZ`);
+		expect(res.status).toBe(404);
+	});
 
-    test("empty name is rejected", async () => {
-        const { status } = await post("/api/rooms", { name: "   " });
-        expect(status).toBe(400);
-    });
+	test("empty name is rejected", async () => {
+		const { status } = await post("/api/rooms", { name: "   " });
+		expect(status).toBe(400);
+	});
 });
 
 describe("WebSocket game flow", () => {
-    test("two players connect, host starts, both receive their own hand", async () => {
-        const host = await post("/api/rooms", { name: "Host" });
-        const { code } = host.json;
-        const guest = await post(`/api/rooms/${code}/join`, { name: "Guest" });
+	test("two players connect, host starts, both receive their own hand", async () => {
+		const host = await post("/api/rooms", { name: "Host" });
+		const { code } = host.json;
+		const guest = await post(`/api/rooms/${code}/join`, { name: "Guest" });
 
-        const h = connect(code, host.json.token);
-        const g = connect(code, guest.json.token);
-        await Promise.all([h.opened, g.opened]);
+		const h = connect(code, host.json.token);
+		const g = connect(code, guest.json.token);
+		await Promise.all([h.opened, g.opened]);
 
-        const lobby = await h.next(
-            (m) =>
-                roomOf(m)?.players.length === 2 &&
-                roomOf(m)!.players.every((p) => p.connected),
-        );
-        expect(roomOf(lobby)!.status).toBe(RoomStatus.Lobby);
+		const lobby = await h.next(
+			(m) => roomOf(m)?.players.length === 2 && roomOf(m)!.players.every((p) => p.connected),
+		);
+		expect(roomOf(lobby)!.status).toBe(RoomStatus.Lobby);
 
-        h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
-        const hostView = await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
-        const guestView = await g.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
+		const hostView = await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		const guestView = await g.next((m) => roomOf(m)?.status === RoomStatus.Playing);
 
-        const hv = roomOf(hostView)!;
-        const gv = roomOf(guestView)!;
-        expect(hv.round!.hand).toHaveLength(7);
-        expect(gv.round!.hand).toHaveLength(7);
-        expect(hv.round!.hand.map((c) => c.id)).not.toEqual(
-            gv.round!.hand.map((c) => c.id),
-        );
-        // Opponent hands are hidden: the guest's view only shows counts for the host.
-        expect(JSON.stringify(gv)).not.toContain(JSON.stringify(hv.round!.hand[0]));
+		const hv = roomOf(hostView)!;
+		const gv = roomOf(guestView)!;
+		expect(hv.round!.hand).toHaveLength(7);
+		expect(gv.round!.hand).toHaveLength(7);
+		expect(hv.round!.hand.map((c) => c.id)).not.toEqual(gv.round!.hand.map((c) => c.id));
+		// Opponent hands are hidden: the guest's view only shows counts for the host.
+		expect(JSON.stringify(gv)).not.toContain(JSON.stringify(hv.round!.hand[0]));
 
-        h.ws.close();
-        g.ws.close();
-    });
+		h.ws.close();
+		g.ws.close();
+	});
 
-    test("host chooses cards per player; invalid counts are refused", async () => {
-        const host = await post("/api/rooms", { name: "Dealer" });
-        await post(`/api/rooms/${host.json.code}/join`, { name: "Pal" });
-        const h = connect(host.json.code, host.json.token);
-        await h.opened;
-        await h.next((m) => roomOf(m) !== null);
+	test("host chooses cards per player; invalid counts are refused", async () => {
+		const host = await post("/api/rooms", { name: "Dealer" });
+		await post(`/api/rooms/${host.json.code}/join`, { name: "Pal" });
+		const h = connect(host.json.code, host.json.token);
+		await h.opened;
+		await h.next((m) => roomOf(m) !== null);
 
-        h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 40 }));
-        const err = await h.next((m) => m.type === "error");
-        expect((err as any).message).toContain("between 2 and 15");
+		h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 40 }));
+		const err = await h.next((m) => m.type === "error");
+		expect((err as any).message).toContain("between 2 and 15");
 
-        h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 4 }));
-        const view = await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
-        expect(roomOf(view)!.cardsPerPlayer).toBe(4);
-        expect(roomOf(view)!.round!.hand).toHaveLength(4);
-        h.ws.close();
-    });
+		h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 4 }));
+		const view = await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		expect(roomOf(view)!.cardsPerPlayer).toBe(4);
+		expect(roomOf(view)!.round!.hand).toHaveLength(4);
+		h.ws.close();
+	});
 
-    test("only the host can start, and invalid actions produce errors", async () => {
-        const host = await post("/api/rooms", { name: "H" });
-        const guest = await post(`/api/rooms/${host.json.code}/join`, {
-            name: "G",
-        });
-        const g = connect(host.json.code, guest.json.token);
-        await g.opened;
-        await g.next((m) => m.type === "room");
-        g.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
-        const err = await g.next((m) => m.type === "error");
-        expect((err as any).message).toContain("Only the host");
-        g.ws.close();
-    });
+	test("only the host can start, and invalid actions produce errors", async () => {
+		const host = await post("/api/rooms", { name: "H" });
+		const guest = await post(`/api/rooms/${host.json.code}/join`, {
+			name: "G",
+		});
+		const g = connect(host.json.code, guest.json.token);
+		await g.opened;
+		await g.next((m) => m.type === "room");
+		g.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
+		const err = await g.next((m) => m.type === "error");
+		expect((err as any).message).toContain("Only the host");
+		g.ws.close();
+	});
 
-    test("reconnecting with the same token restores the session", async () => {
-        const host = await post("/api/rooms", { name: "Recon" });
-        const first = connect(host.json.code, host.json.token);
-        await first.opened;
-        first.ws.close();
-        await Bun.sleep(50);
-        const second = connect(host.json.code, host.json.token);
-        await second.opened;
-        const snap = await second.next(
-            (m) => roomOf(m)?.you === host.json.token || roomOf(m) !== null,
-        );
-        expect(roomOf(snap)!.you).toBe(roomOf(snap)!.hostId);
-        second.ws.close();
-    });
+	test("reconnecting with the same token restores the session", async () => {
+		const host = await post("/api/rooms", { name: "Recon" });
+		const first = connect(host.json.code, host.json.token);
+		await first.opened;
+		first.ws.close();
+		await Bun.sleep(50);
+		const second = connect(host.json.code, host.json.token);
+		await second.opened;
+		const snap = await second.next(
+			(m) => roomOf(m)?.you === host.json.token || roomOf(m) !== null,
+		);
+		expect(roomOf(snap)!.you).toBe(roomOf(snap)!.hostId);
+		second.ws.close();
+	});
 
-    test("bad token is refused with a close", async () => {
-        const host = await post("/api/rooms", { name: "X" });
-        const ws = new WebSocket(`${wsBase}/ws?room=${host.json.code}&token=nope`);
-        const closed = await new Promise<number>((resolve) => {
-            ws.onclose = (ev) => resolve(ev.code);
-        });
-        expect(closed).toBe(4401);
-    });
+	test("bad token is refused with a close", async () => {
+		const host = await post("/api/rooms", { name: "X" });
+		const ws = new WebSocket(`${wsBase}/ws?room=${host.json.code}&token=nope`);
+		const closed = await new Promise<number>((resolve) => {
+			ws.onclose = (ev) => resolve(ev.code);
+		});
+		expect(closed).toBe(4401);
+	});
 
-    test("host can reset an in-progress game back to lobby", async () => {
-        const host = await post("/api/rooms", { name: "HostR" });
-        const guest = await post(`/api/rooms/${host.json.code}/join`, {
-            name: "GuestR",
-        });
-        const h = connect(host.json.code, host.json.token);
-        const g = connect(host.json.code, guest.json.token);
-        await Promise.all([h.opened, g.opened]);
-        await h.next((m) => roomOf(m)?.players.length === 2);
+	test("host can reset an in-progress game back to lobby", async () => {
+		const host = await post("/api/rooms", { name: "HostR" });
+		const guest = await post(`/api/rooms/${host.json.code}/join`, {
+			name: "GuestR",
+		});
+		const h = connect(host.json.code, host.json.token);
+		const g = connect(host.json.code, guest.json.token);
+		await Promise.all([h.opened, g.opened]);
+		await h.next((m) => roomOf(m)?.players.length === 2);
 
-        h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
-        await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
-        await g.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 7 }));
+		await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		await g.next((m) => roomOf(m)?.status === RoomStatus.Playing);
 
-        // Guest cannot reset
-        g.ws.send(JSON.stringify({ type: "resetRoom" }));
-        const err = await g.next((m) => m.type === "error");
-        expect((err as any).message).toContain("Only the host");
+		// Guest cannot reset
+		g.ws.send(JSON.stringify({ type: "resetRoom" }));
+		const err = await g.next((m) => m.type === "error");
+		expect((err as any).message).toContain("Only the host");
 
-        // Host resets
-        h.ws.send(JSON.stringify({ type: "resetRoom" }));
-        const hLobby = await h.next((m) => roomOf(m)?.status === RoomStatus.Lobby);
-        const gLobby = await g.next((m) => roomOf(m)?.status === RoomStatus.Lobby);
+		// Host resets
+		h.ws.send(JSON.stringify({ type: "resetRoom" }));
+		const hLobby = await h.next((m) => roomOf(m)?.status === RoomStatus.Lobby);
+		const gLobby = await g.next((m) => roomOf(m)?.status === RoomStatus.Lobby);
 
-        expect(roomOf(hLobby)!.round).toBeNull();
-        expect(roomOf(gLobby)!.round).toBeNull();
-        expect(roomOf(hLobby)!.players).toHaveLength(2);
+		expect(roomOf(hLobby)!.round).toBeNull();
+		expect(roomOf(gLobby)!.round).toBeNull();
+		expect(roomOf(hLobby)!.players).toHaveLength(2);
 
-        h.ws.close();
-        g.ws.close();
-    });
+		h.ws.close();
+		g.ws.close();
+	});
 
-    test("host updates custom room settings and cards", async () => {
-        const host = await post("/api/rooms", { name: "HostSettings" });
-        const guest = await post(`/api/rooms/${host.json.code}/join`, {
-            name: "GuestSettings",
-        });
-        const h = connect(host.json.code, host.json.token);
-        const g = connect(host.json.code, guest.json.token);
-        await Promise.all([h.opened, g.opened]);
-        await h.next((m) => roomOf(m)?.players.length === 2);
+	test("host updates custom room settings and cards", async () => {
+		const host = await post("/api/rooms", { name: "HostSettings" });
+		const guest = await post(`/api/rooms/${host.json.code}/join`, {
+			name: "GuestSettings",
+		});
+		const h = connect(host.json.code, host.json.token);
+		const g = connect(host.json.code, guest.json.token);
+		await Promise.all([h.opened, g.opened]);
+		await h.next((m) => roomOf(m)?.players.length === 2);
 
-        // Host updates room settings
-        h.ws.send(
-            JSON.stringify({
-                type: "settings",
-                rules: {
-                    stacking: true,
-                    targetScore: 300,
-                    turnTimer: 15,
-                    eliminationLimit: 25,
-                    cards: {
-                        doubleTrouble: true,
-                        swapHands: true,
-                        snatch: true,
-                        shield: true,
-                        wild6: true,
-                        wild10: true,
-                    },
-                },
-            }),
-        );
+		// Host updates room settings
+		h.ws.send(
+			JSON.stringify({
+				type: "settings",
+				rules: {
+					stacking: true,
+					targetScore: 300,
+					turnTimer: 15,
+					eliminationLimit: 25,
+					cards: {
+						doubleTrouble: true,
+						swapHands: true,
+						snatch: true,
+						shield: true,
+						wild6: true,
+						wild10: true,
+					},
+				},
+			}),
+		);
 
-        const updated = await h.next(
-            (m) =>
-                roomOf(m)?.rules.stacking === true &&
-                roomOf(m)?.rules.turnTimer === 15 &&
-                roomOf(m)?.rules.cards.shield === true,
-        );
-        const rules = roomOf(updated)!.rules;
-        expect(rules.stacking).toBe(true);
-        expect(rules.targetScore).toBe(300);
-        expect(rules.turnTimer).toBe(15);
-        expect(rules.eliminationLimit).toBe(25);
-        expect(rules.cards.doubleTrouble).toBe(true);
-        expect(rules.cards.shield).toBe(true);
-        expect(rules.cards.wild10).toBe(true);
+		const updated = await h.next(
+			(m) =>
+				roomOf(m)?.rules.stacking === true &&
+				roomOf(m)?.rules.turnTimer === 15 &&
+				roomOf(m)?.rules.cards.shield === true,
+		);
+		const rules = roomOf(updated)!.rules;
+		expect(rules.stacking).toBe(true);
+		expect(rules.targetScore).toBe(300);
+		expect(rules.turnTimer).toBe(15);
+		expect(rules.eliminationLimit).toBe(25);
+		expect(rules.cards.doubleTrouble).toBe(true);
+		expect(rules.cards.shield).toBe(true);
+		expect(rules.cards.wild10).toBe(true);
 
-        h.ws.close();
-        g.ws.close();
-    });
+		h.ws.close();
+		g.ws.close();
+	});
 
-    test("player leaving mid-game is removed from the room and player list updates", async () => {
-        const host = await post("/api/rooms", { name: "HostL" });
-        const guest1 = await post(`/api/rooms/${host.json.code}/join`, {
-            name: "Guest1",
-        });
-        const guest2 = await post(`/api/rooms/${host.json.code}/join`, {
-            name: "Guest2",
-        });
+	test("player leaving mid-game is removed from the room and player list updates", async () => {
+		const host = await post("/api/rooms", { name: "HostL" });
+		const guest1 = await post(`/api/rooms/${host.json.code}/join`, {
+			name: "Guest1",
+		});
+		const guest2 = await post(`/api/rooms/${host.json.code}/join`, {
+			name: "Guest2",
+		});
 
-        const h = connect(host.json.code, host.json.token);
-        const g1 = connect(host.json.code, guest1.json.token);
-        const g2 = connect(host.json.code, guest2.json.token);
-        await Promise.all([h.opened, g1.opened, g2.opened]);
-        await h.next((m) => roomOf(m)?.players.length === 3);
+		const h = connect(host.json.code, host.json.token);
+		const g1 = connect(host.json.code, guest1.json.token);
+		const g2 = connect(host.json.code, guest2.json.token);
+		await Promise.all([h.opened, g1.opened, g2.opened]);
+		await h.next((m) => roomOf(m)?.players.length === 3);
 
-        h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 5 }));
-        await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
-        await g1.next((m) => roomOf(m)?.status === RoomStatus.Playing);
-        await g2.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		h.ws.send(JSON.stringify({ type: "start", cardsPerPlayer: 5 }));
+		await h.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		await g1.next((m) => roomOf(m)?.status === RoomStatus.Playing);
+		await g2.next((m) => roomOf(m)?.status === RoomStatus.Playing);
 
-        // Guest 1 leaves the game
-        g1.ws.send(JSON.stringify({ type: "leave" }));
+		// Guest 1 leaves the game
+		g1.ws.send(JSON.stringify({ type: "leave" }));
 
-        const hUpdate = await h.next(
-            (m) =>
-                roomOf(m)?.status === RoomStatus.Playing &&
-                roomOf(m)!.players.length === 2 &&
-                !roomOf(m)!.players.some((p) => p.name === "Guest1"),
-        );
-        expect(roomOf(hUpdate)!.round!.order).toHaveLength(2);
-        expect(roomOf(hUpdate)!.round!.order.some((o) => o.name === "Guest1")).toBe(
-            false,
-        );
+		const hUpdate = await h.next(
+			(m) =>
+				roomOf(m)?.status === RoomStatus.Playing &&
+				roomOf(m)!.players.length === 2 &&
+				!roomOf(m)!.players.some((p) => p.name === "Guest1"),
+		);
+		expect(roomOf(hUpdate)!.round!.order).toHaveLength(2);
+		expect(roomOf(hUpdate)!.round!.order.some((o) => o.name === "Guest1")).toBe(false);
 
-        h.ws.close();
-        g1.ws.close();
-        g2.ws.close();
-    });
+		h.ws.close();
+		g1.ws.close();
+		g2.ws.close();
+	});
 });
 
 describe("CORS and origin checks", () => {
-    test("preflight from the client origin is allowed", async () => {
-        const res = await fetch(`${base}/api/rooms`, {
-            method: "OPTIONS",
-            headers: {
-                origin: "http://localhost:3000",
-                "access-control-request-method": "POST",
-                "access-control-request-headers": "content-type",
-            },
-        });
-        expect(res.headers.get("access-control-allow-origin")).toBe(
-            "http://localhost:3000",
-        );
-    });
+	test("preflight from the client origin is allowed", async () => {
+		const res = await fetch(`${base}/api/rooms`, {
+			method: "OPTIONS",
+			headers: {
+				origin: "http://localhost:3000",
+				"access-control-request-method": "POST",
+				"access-control-request-headers": "content-type",
+			},
+		});
+		expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+	});
 
-    test("foreign origins do not get CORS headers", async () => {
-        const res = await fetch(`${base}/api/rooms`, {
-            method: "OPTIONS",
-            headers: {
-                origin: "https://evil.example",
-                "access-control-request-method": "POST",
-            },
-        });
-        expect(res.headers.get("access-control-allow-origin")).not.toBe(
-            "https://evil.example",
-        );
-    });
+	test("foreign origins do not get CORS headers", async () => {
+		const res = await fetch(`${base}/api/rooms`, {
+			method: "OPTIONS",
+			headers: {
+				origin: "https://evil.example",
+				"access-control-request-method": "POST",
+			},
+		});
+		expect(res.headers.get("access-control-allow-origin")).not.toBe("https://evil.example");
+	});
 
-    test("WebSocket from a disallowed origin is refused", async () => {
-        const host = await post("/api/rooms", { name: "Origin" });
-        const ws = new WebSocket(
-            `${wsBase}/ws?room=${host.json.code}&token=${host.json.token}`,
-            {
-                headers: { origin: "https://evil.example" },
-            } as any,
-        );
-        const code = await new Promise<number>((resolve) => {
-            ws.onclose = (ev) => resolve(ev.code);
-        });
-        expect(code).toBe(4404);
-    });
+	test("WebSocket from a disallowed origin is refused", async () => {
+		const host = await post("/api/rooms", { name: "Origin" });
+		const ws = new WebSocket(`${wsBase}/ws?room=${host.json.code}&token=${host.json.token}`, {
+			headers: { origin: "https://evil.example" },
+		} as any);
+		const code = await new Promise<number>((resolve) => {
+			ws.onclose = (ev) => resolve(ev.code);
+		});
+		expect(code).toBe(4404);
+	});
 });
 
 describe("bundled client", () => {
-    const built = existsSync(config.clientDist);
+	const built = existsSync(config.clientDist);
 
-    test.skipIf(!built)(
-        "serves index.html at / and for client-side routes",
-        async () => {
-            const root = await fetch(`${base}/`);
-            expect(root.status).toBe(200);
-            expect(root.headers.get("content-type")).toContain("text/html");
-            expect(await root.text()).toContain('id="root"');
+	test.skipIf(!built)("serves index.html at / and for client-side routes", async () => {
+		const root = await fetch(`${base}/`);
+		expect(root.status).toBe(200);
+		expect(root.headers.get("content-type")).toContain("text/html");
+		expect(await root.text()).toContain('id="root"');
 
-            const deep = await fetch(`${base}/some/client/route`);
-            expect(deep.status).toBe(200);
-            expect(await deep.text()).toContain('id="root"');
-        },
-    );
+		const deep = await fetch(`${base}/some/client/route`);
+		expect(deep.status).toBe(200);
+		expect(await deep.text()).toContain('id="root"');
+	});
 
-    test.skipIf(!built)(
-        "serves hashed assets with long-lived caching",
-        async () => {
-            const html = await (await fetch(`${base}/`)).text();
-            const match = html.match(/src="(\/assets\/[^"]+\.js)"/);
-            expect(match).not.toBeNull();
-            const asset = await fetch(`${base}${match![1]}`);
-            expect(asset.status).toBe(200);
-            expect(asset.headers.get("cache-control")).toContain("immutable");
-        },
-    );
+	test.skipIf(!built)("serves hashed assets with long-lived caching", async () => {
+		const html = await (await fetch(`${base}/`)).text();
+		const match = html.match(/src="(\/assets\/[^"]+\.js)"/);
+		expect(match).not.toBeNull();
+		const asset = await fetch(`${base}${match![1]}`);
+		expect(asset.status).toBe(200);
+		expect(asset.headers.get("cache-control")).toContain("immutable");
+	});
 
-    test.skipIf(!built)(
-        "does not serve files outside the client build",
-        async () => {
-            const res = await fetch(`${base}/%2e%2e/%2e%2e/package.json`);
-            const body = await res.text();
-            expect(body).not.toContain('"workspaces"');
-        },
-    );
+	test.skipIf(!built)("does not serve files outside the client build", async () => {
+		const res = await fetch(`${base}/%2e%2e/%2e%2e/package.json`);
+		const body = await res.text();
+		expect(body).not.toContain('"workspaces"');
+	});
 
-    test("unknown API paths return JSON 404, not the client", async () => {
-        const res = await fetch(`${base}/api/does-not-exist`);
-        expect(res.status).toBe(404);
-        expect(res.headers.get("content-type")).toContain("application/json");
-    });
+	test("unknown API paths return JSON 404, not the client", async () => {
+		const res = await fetch(`${base}/api/does-not-exist`);
+		expect(res.status).toBe(404);
+		expect(res.headers.get("content-type")).toContain("application/json");
+	});
 
-    test("API routes still win over the client fallback", async () => {
-        const res = await fetch(`${base}/api/health`);
-        const json = (await res.json()) as any;
-        expect(json.ok).toBe(true);
-        expect(json.status).toBe("ok");
-    });
+	test("API routes still win over the client fallback", async () => {
+		const res = await fetch(`${base}/api/health`);
+		const json = (await res.json()) as any;
+		expect(json.ok).toBe(true);
+		expect(json.status).toBe("ok");
+	});
 });
 
 describe("same-origin WebSocket", () => {
-    test("accepts the server's own host even when it is not in CORS_ORIGINS", async () => {
-        const host = await post("/api/rooms", { name: "Self" });
-        const ws = new WebSocket(
-            `${wsBase}/ws?room=${host.json.code}&token=${host.json.token}`,
-            {
-                headers: { origin: `http://localhost:${server.server!.port}` },
-            } as any,
-        );
-        const opened = await new Promise<boolean>((resolve) => {
-            ws.onopen = () => resolve(true);
-            ws.onclose = () => resolve(false);
-        });
-        expect(opened).toBe(true);
-        ws.close();
-    });
+	test("accepts the server's own host even when it is not in CORS_ORIGINS", async () => {
+		const host = await post("/api/rooms", { name: "Self" });
+		const ws = new WebSocket(`${wsBase}/ws?room=${host.json.code}&token=${host.json.token}`, {
+			headers: { origin: `http://localhost:${server.server!.port}` },
+		} as any);
+		const opened = await new Promise<boolean>((resolve) => {
+			ws.onopen = () => resolve(true);
+			ws.onclose = () => resolve(false);
+		});
+		expect(opened).toBe(true);
+		ws.close();
+	});
 });

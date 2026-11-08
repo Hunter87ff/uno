@@ -1,0 +1,18 @@
+# bunfig.toml
+
+[fmt]
+# Tab configuration
+useTabs = true          # Set to true to use actual tabs, false for spaces
+tabWidth = 4            # Set the width of a tab to 4 columns
+
+# General Formatting Preferences
+printWidth = 100         # Line length limit before wrapping (Default is 80)
+semi = true             # Print semicolons at the ends of statements
+singleQuote = false     # Use double quotes (set to true for single quotes)
+trailingComma = "all"   # Print trailing commas wherever possible (es5, none, or all)
+
+# Bun-Specific Quality of Life Optimizations (Highly Recommended)
+sortImports = true      # Automatically groups, merges, and alphabetizes imports
+sortPackageJson = true  # Cleans up and alphabetizes fields in package.json
+sortTailwindcss = true  # Automatically orders Tailwind utility classes (if installed)
+jsdoc = true            # Formats and cleans up JSDoc comments

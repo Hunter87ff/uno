@@ -147,55 +147,60 @@ Run one package's tests: `bun test shared` or `bun test server`.
 _Last updated: 2026-11-08 (implemented changes.md: dedicated room configuration, custom cards, plus card stacking, turn timers, horizontal/vertical layouts, and elimination card limits)._
 
 ### Done
+
 - Bun workspace scaffold (`shared`, `server`, `client`).
 - Modularized domain enums into `shared/src/types.ts`:
-  - `Color`: `Red`, `Yellow`, `Green`, `Blue`
-  - `SpecialColor`: `Wild`
-  - `CardType`: `Number`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Wild6`, `Wild10`
-  - `RoomStatus`: `Lobby`, `Playing`, `RoundOver`, `GameOver`
-  - `ActionType`: `Play`, `Draw`, `Pass`, `CatchUno`, `CallUno`, `PlayShield`
-  - `ClientMessageType`: `Settings`, `Start`, `NextRound`, `ResetRoom`, `Kick`, `Leave`, `Action`
-  - `ServerMessageType`: `Room`, `Error`
-  - `CloseCode`: `InvalidSession`, `Removed`, `ForbiddenOrigin`
-  - `SfxType`: Audio cues (`Play`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `Draw`, `Shuffle`, `Turn`, `Uno`, `Catch`, `RoundWin`, `GameWin`, `Join`, `Error`, `DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Eliminated`)
-  - UI primitives in client (`client/src/components/ui.tsx`): preserved original styling and interface contract without modifications.
-  - Storage keys in client: `StorageKey` enum (`Mute`, `Session`, `Name`).
+    - `Color`: `Red`, `Yellow`, `Green`, `Blue`
+    - `SpecialColor`: `Wild`
+    - `CardType`: `Number`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Wild6`, `Wild10`
+    - `RoomStatus`: `Lobby`, `Playing`, `RoundOver`, `GameOver`
+    - `ActionType`: `Play`, `Draw`, `Pass`, `CatchUno`, `CallUno`, `PlayShield`
+    - `ClientMessageType`: `Settings`, `Start`, `NextRound`, `ResetRoom`, `Kick`, `Leave`, `Action`
+    - `ServerMessageType`: `Room`, `Error`
+    - `CloseCode`: `InvalidSession`, `Removed`, `ForbiddenOrigin`
+    - `SfxType`: Audio cues (`Play`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `Draw`, `Shuffle`, `Turn`, `Uno`, `Catch`, `RoundWin`, `GameWin`, `Join`, `Error`, `DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Eliminated`)
+    - UI primitives in client (`client/src/components/ui.tsx`): preserved original styling and interface contract without modifications.
+    - Storage keys in client: `StorageKey` enum (`Mute`, `Session`, `Name`).
 - Implemented all features from `changes.md`:
-  - **Dedicated Room Configuration Module (`client/src/components/RoomSettingsModal.tsx`)**:
-    - Accessible via "⚙ Room Settings" button in the lobby.
-    - Host controls for target score, plus card stacking, turn timer, elimination card limit, and custom cards.
-    - Personal display preference: Horizontal (default) vs Vertical window layout modes.
-  - **Custom Expansion Cards**:
-    - "Double Trouble": allows player to play two cards in one turn.
-    - "Swap Hands": rotates all players' hands in play direction.
-    - "Snatch": takes a random card from a chosen opponent.
-    - "Shield": protects player from negative effects for one turn; 1 in deck, usable anytime (even out of turn).
-    - "Plus Six (+6)" & "Plus Ten (+10)": wild cards adding 6 or 10 pending draws.
-    - Pure SVG/CSS icons and corner glyphs designed for all cards in `client/src/components/Card.tsx`.
-  - **Updated Game Rules**:
-    - Stacking: same or higher number plus cards (+2, +4, +6, +10) pass the draw penalty on.
-    - Turn timer: default 30s; server-enforced timeout forces draw and passes turn, with live countdown display in client.
-    - Elimination limit: optional max card threshold; players exceeding it are eliminated and spectate the rest of the round.
-    - Game window layout: Horizontal (default) with toggle to Vertical mode.
+    - **Dedicated Room Configuration Module (`client/src/components/RoomSettingsModal.tsx`)**:
+        - Accessible via "⚙ Room Settings" button in the lobby.
+        - Host controls for target score, plus card stacking, turn timer, elimination card limit, and custom cards.
+        - Personal display preference: Horizontal (default) vs Vertical window layout modes.
+    - **Custom Expansion Cards**:
+        - "Double Trouble": allows player to play two cards in one turn.
+        - "Swap Hands": rotates all players' hands in play direction.
+        - "Snatch": takes a random card from a chosen opponent.
+        - "Shield": protects player from negative effects for one turn; 1 in deck, usable anytime (even out of turn).
+        - "Plus Six (+6)" & "Plus Ten (+10)": wild cards adding 6 or 10 pending draws.
+        - Pure SVG/CSS icons and corner glyphs designed for all cards in `client/src/components/Card.tsx`.
+    - **Updated Game Rules**:
+        - Stacking: same or higher number plus cards (+2, +4, +6, +10) pass the draw penalty on.
+        - Turn timer: default 30s; server-enforced timeout forces draw and passes turn, with live countdown display in client.
+        - Elimination limit: optional max card threshold; players exceeding it are eliminated and spectate the rest of the round.
+        - Game window layout: Horizontal (default) with toggle to Vertical mode.
 - Synthesized Web Audio effects for all new actions and card events (`DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Eliminated`).
 - Added comprehensive unit and integration test coverage for all new card mechanics, stacking rules, elimination, and settings updates.
 - Fixed round scoring bug when players are eliminated: card points from eliminated players' hands are preserved in `eliminatedPoints` and awarded to the round winner, and scoreboard ranks the winner above opponents on tied points.
 
 ### Verified
+
 - `bun test`: 70 tests pass across 4 test suites (`shared`, `server`, `client/sound`).
 - `bun run typecheck`: clean across all 3 workspaces (`@uno/shared`, `@uno/server`, `@uno/client`).
 - `bun run build`: production client build succeeds.
 
 ### Next
+
 - Client UI tests (none yet). Consider a Playwright script under `client/e2e/` if it should live in the repo.
 - Mobile layout polish (hand overlap is tuned for ≥ 360px wide screens; not checked on a real device).
 
 ### Known limitations / ideas
+
 - Rooms are in-memory; a server restart loses all games.
 - No turn timer UI, chat, spectators, bots, Seven-O or Jump-In.
 - Client has no automated UI tests yet.
 
 ### Decisions log
+
 - Elysia native `.ws()` instead of socket.io: fewer deps, Bun-native, and the server is already Elysia.
 - Engine lives in `shared/` so rules are one copy, testable without a server, and the client can import types.
 - Card art is CSS/SVG, so there are no asset licensing concerns and no image downloads.

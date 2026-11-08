@@ -3,110 +3,119 @@
 html,
 body,
 #root {
-  height: 100%;
+	height: 100%;
 }
 
 body {
-  margin: 0;
-  color: #f1f5f9;
-  background: #070614;
-  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
+	margin: 0;
+	color: #f1f5f9;
+	background: #070614;
+	font-family:
+		"Inter",
+		system-ui,
+		-apple-system,
+		"Segoe UI",
+		Roboto,
+		sans-serif;
+	-webkit-font-smoothing: antialiased;
 }
 
 /* Midnight backdrop with soft UNO-coloured glows in each corner. */
 .app-bg {
-  min-height: 100%;
-  background:
-    radial-gradient(circle at 8% 0%, rgb(239 68 68 / 0.22), transparent 38%),
-    radial-gradient(circle at 96% 4%, rgb(250 204 21 / 0.14), transparent 36%),
-    radial-gradient(circle at 100% 100%, rgb(34 197 94 / 0.16), transparent 40%),
-    radial-gradient(circle at 0% 100%, rgb(59 130 246 / 0.2), transparent 42%),
-    linear-gradient(160deg, #15102e 0%, #0a0820 55%, #05050f 100%);
+	min-height: 100%;
+	background:
+		radial-gradient(circle at 8% 0%, rgb(239 68 68 / 0.22), transparent 38%),
+		radial-gradient(circle at 96% 4%, rgb(250 204 21 / 0.14), transparent 36%),
+		radial-gradient(circle at 100% 100%, rgb(34 197 94 / 0.16), transparent 40%),
+		radial-gradient(circle at 0% 100%, rgb(59 130 246 / 0.2), transparent 42%),
+		linear-gradient(160deg, #15102e 0%, #0a0820 55%, #05050f 100%);
 }
 
 /* Oval felt table with a wooden rim. */
 .table-felt {
-  background:
-    radial-gradient(ellipse at 50% 40%, #1f8a4c 0%, #136b3a 55%, #0b4524 100%);
-  box-shadow:
-    inset 0 0 60px rgb(0 0 0 / 0.55),
-    inset 0 0 0 10px #3b2412,
-    inset 0 0 0 13px #7a4a22,
-    0 30px 60px -20px rgb(0 0 0 / 0.7),
-    0 0 0 1px rgb(255 255 255 / 0.06);
+	background: radial-gradient(ellipse at 50% 40%, #1f8a4c 0%, #136b3a 55%, #0b4524 100%);
+	box-shadow:
+		inset 0 0 60px rgb(0 0 0 / 0.55),
+		inset 0 0 0 10px #3b2412,
+		inset 0 0 0 13px #7a4a22,
+		0 30px 60px -20px rgb(0 0 0 / 0.7),
+		0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 .glass {
-  background: linear-gradient(160deg, rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.03));
-  border: 1px solid rgb(255 255 255 / 0.1);
-  box-shadow: 0 25px 50px -20px rgb(0 0 0 / 0.6);
-  backdrop-filter: blur(14px);
+	background: linear-gradient(160deg, rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.03));
+	border: 1px solid rgb(255 255 255 / 0.1);
+	box-shadow: 0 25px 50px -20px rgb(0 0 0 / 0.6);
+	backdrop-filter: blur(14px);
 }
 
 .text-gradient {
-  background: linear-gradient(90deg, #fca5a5, #fde047 35%, #86efac 65%, #93c5fd);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+	background: linear-gradient(90deg, #fca5a5, #fde047 35%, #86efac 65%, #93c5fd);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
 }
 
 .hide-scrollbar {
-  scrollbar-width: none;
+	scrollbar-width: none;
 }
 .hide-scrollbar::-webkit-scrollbar {
-  display: none;
+	display: none;
 }
 
 @keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.94) translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+	from {
+		opacity: 0;
+		transform: scale(0.94) translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
 }
 .pop-in {
-  animation: pop-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	animation: pop-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes uno-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
+	0%,
+	100% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.08);
+	}
 }
 .uno-pulse {
-  animation: uno-pulse 0.9s ease-in-out infinite;
+	animation: uno-pulse 0.9s ease-in-out infinite;
 }
 
 @keyframes turn-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 2px rgb(253 224 71 / 0.8), 0 0 18px 2px rgb(253 224 71 / 0.35);
-  }
-  50% {
-    box-shadow: 0 0 0 2px rgb(253 224 71 / 0.5), 0 0 28px 6px rgb(253 224 71 / 0.2);
-  }
+	0%,
+	100% {
+		box-shadow:
+			0 0 0 2px rgb(253 224 71 / 0.8),
+			0 0 18px 2px rgb(253 224 71 / 0.35);
+	}
+	50% {
+		box-shadow:
+			0 0 0 2px rgb(253 224 71 / 0.5),
+			0 0 28px 6px rgb(253 224 71 / 0.2);
+	}
 }
 .turn-glow {
-  animation: turn-glow 1.6s ease-in-out infinite;
+	animation: turn-glow 1.6s ease-in-out infinite;
 }
 
 @keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-6px);
+	}
 }
 .float {
-  animation: float 4s ease-in-out infinite;
+	animation: float 4s ease-in-out infinite;
 }

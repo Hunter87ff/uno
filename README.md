@@ -35,12 +35,12 @@ join with the code in the other.
 
 ## Scripts
 
-| Command             | What it does                                    |
-| ------------------- | ----------------------------------------------- |
-| `bun run dev`       | Start the server and Vite dev server together   |
-| `bun test`          | Run engine, randomized and server tests         |
-| `bun run typecheck` | Type-check every workspace                      |
-| `bun run build`     | Build the client into `client/dist`             |
+| Command             | What it does                                  |
+| ------------------- | --------------------------------------------- |
+| `bun run dev`       | Start the server and Vite dev server together |
+| `bun test`          | Run engine, randomized and server tests       |
+| `bun run typecheck` | Type-check every workspace                    |
+| `bun run build`     | Build the client into `client/dist`           |
 
 ### Deploying (one server)
 

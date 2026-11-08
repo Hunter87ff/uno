@@ -1,567 +1,540 @@
 import {
-    ActionType,
-    type Action,
-    CARDS_PER_PLAYER,
-    ClientMessageType,
-    CloseCode,
-    DEFAULT_RULES,
-    GameError,
-    type GameState,
-    MAX_PLAYERS,
-    MIN_PLAYERS,
-    RoomStatus,
-    ServerMessageType,
-    type ClientMessage,
-    type RoomView,
-    applyAction,
-    roundPoints,
-    startRound,
-    suggestAction,
-    viewFor,
+	type Action,
+	ActionType,
+	applyAction,
+	CARDS_PER_PLAYER,
+	type ClientMessage,
+	ClientMessageType,
+	CloseCode,
+	DEFAULT_RULES,
+	GameError,
+	type GameState,
+	MAX_PLAYERS,
+	MIN_PLAYERS,
+	RoomStatus,
+	type RoomView,
+	roundPoints,
+	ServerMessageType,
+	startRound,
+	suggestAction,
+	viewFor,
 } from "@uno/shared";
+
 import { config } from "../config";
 import {
-    type PlayerRecord,
-    type Room,
-    RoomError,
-    type Sender,
-    normalizeRules,
-    randomCode,
-    validateName,
+	normalizeRules,
+	type PlayerRecord,
+	randomCode,
+	type Room,
+	RoomError,
+	type Sender,
+	validateName,
 } from "./types";
 
 export { RoomError, type Sender, type Room, type PlayerRecord };
 
 export class RoomManager {
-    private rooms = new Map<string, Room>();
-    private sweeper: ReturnType<typeof setInterval>;
+	private rooms = new Map<string, Room>();
+	private sweeper: ReturnType<typeof setInterval>;
 
-    constructor(private now: () => number = Date.now) {
-        this.sweeper = setInterval(() => this.sweepIdleRooms(), 60_000);
-        this.sweeper.unref?.();
-    }
+	constructor(private now: () => number = Date.now) {
+		this.sweeper = setInterval(() => this.sweepIdleRooms(), 60_000);
+		this.sweeper.unref?.();
+	}
 
-    /* ----------------------------- REST operations ---------------------------- */
+	/* ----------------------------- REST operations ---------------------------- */
 
-    createRoom(rawName: string): {
-        code: string;
-        playerId: string;
-        token: string;
-    } {
-        const name = validateName(rawName);
-        let code = randomCode();
-        while (this.rooms.has(code)) code = randomCode();
+	createRoom(rawName: string): {
+		code: string;
+		playerId: string;
+		token: string;
+	} {
+		const name = validateName(rawName);
+		let code = randomCode();
+		while (this.rooms.has(code)) code = randomCode();
 
-        const player = this.newPlayer(name);
-        const room: Room = {
-            code,
-            hostId: player.id,
-            rules: { ...DEFAULT_RULES },
-            cardsPerPlayer: CARDS_PER_PLAYER.default,
-            players: [player],
-            game: null,
-            lastRoundPoints: null,
-            gameWinnerId: null,
-            lastActive: this.now(),
-            autoTimer: null,
-            turnTimerId: null,
-            turnDeadline: null,
-        };
-        this.rooms.set(code, room);
-        return { code, playerId: player.id, token: player.token };
-    }
+		const player = this.newPlayer(name);
+		const room: Room = {
+			code,
+			hostId: player.id,
+			rules: { ...DEFAULT_RULES },
+			cardsPerPlayer: CARDS_PER_PLAYER.default,
+			players: [player],
+			game: null,
+			lastRoundPoints: null,
+			gameWinnerId: null,
+			lastActive: this.now(),
+			autoTimer: null,
+			turnTimerId: null,
+			turnDeadline: null,
+		};
+		this.rooms.set(code, room);
+		return { code, playerId: player.id, token: player.token };
+	}
 
-    roomExists(code: string): {
-        code: string;
-        status: RoomStatus;
-        playerCount: number;
-    } {
-        const room = this.getRoom(code);
-        return {
-            code: room.code,
-            status: this.statusOf(room),
-            playerCount: room.players.length,
-        };
-    }
+	roomExists(code: string): {
+		code: string;
+		status: RoomStatus;
+		playerCount: number;
+	} {
+		const room = this.getRoom(code);
+		return {
+			code: room.code,
+			status: this.statusOf(room),
+			playerCount: room.players.length,
+		};
+	}
 
-    joinRoom(
-        code: string,
-        rawName: string,
-    ): { code: string; playerId: string; token: string } {
-        const room = this.getRoom(code);
-        const name = validateName(rawName);
-        if (room.players.length >= MAX_PLAYERS)
-            throw new RoomError(409, "This room is full");
-        if (this.statusOf(room) !== RoomStatus.Lobby) {
-            throw new RoomError(409, "A game is already in progress in this room");
-        }
-        const taken = room.players.some(
-            (p) => p.name.toLowerCase() === name.toLowerCase(),
-        );
-        if (taken)
-            throw new RoomError(
-                409,
-                `The name "${name}" is already taken in this room`,
-            );
+	joinRoom(code: string, rawName: string): { code: string; playerId: string; token: string } {
+		const room = this.getRoom(code);
+		const name = validateName(rawName);
+		if (room.players.length >= MAX_PLAYERS) throw new RoomError(409, "This room is full");
+		if (this.statusOf(room) !== RoomStatus.Lobby) {
+			throw new RoomError(409, "A game is already in progress in this room");
+		}
+		const taken = room.players.some((p) => p.name.toLowerCase() === name.toLowerCase());
+		if (taken) throw new RoomError(409, `The name "${name}" is already taken in this room`);
 
-        const player = this.newPlayer(name);
-        room.players.push(player);
-        this.touch(room);
-        this.broadcast(room);
-        return { code: room.code, playerId: player.id, token: player.token };
-    }
+		const player = this.newPlayer(name);
+		room.players.push(player);
+		this.touch(room);
+		this.broadcast(room);
+		return { code: room.code, playerId: player.id, token: player.token };
+	}
 
-    /* ---------------------------- WebSocket lifecycle ------------------------- */
+	/* ---------------------------- WebSocket lifecycle ------------------------- */
 
-    /** Binds a socket to the player holding `token`. Throws RoomError if the session is invalid. */
-    attach(code: string, token: string, socket: Sender): string {
-        const room = this.getRoom(code);
-        const player = room.players.find((p) => p.token === token);
-        if (!player) throw new RoomError(401, "Unknown session for this room");
-        player.socket = socket;
-        this.touch(room);
-        this.broadcast(room);
-        return player.id;
-    }
+	/** Binds a socket to the player holding `token`. Throws RoomError if the session is invalid. */
+	attach(code: string, token: string, socket: Sender): string {
+		const room = this.getRoom(code);
+		const player = room.players.find((p) => p.token === token);
+		if (!player) throw new RoomError(401, "Unknown session for this room");
+		player.socket = socket;
+		this.touch(room);
+		this.broadcast(room);
+		return player.id;
+	}
 
-    detach(code: string, token: string, socket: Sender): void {
-        const room = this.rooms.get(code);
-        if (!room) return;
-        const player = room.players.find((p) => p.token === token);
-        if (!player || player.socket !== socket) return; // a newer connection already took over
-        player.socket = null;
-        this.touch(room);
-        this.broadcast(room);
-    }
+	detach(code: string, token: string, socket: Sender): void {
+		const room = this.rooms.get(code);
+		if (!room) return;
+		const player = room.players.find((p) => p.token === token);
+		if (!player || player.socket !== socket) return; // a newer connection already took over
+		player.socket = null;
+		this.touch(room);
+		this.broadcast(room);
+	}
 
-    /** Handles one message from a connected player. Errors are reported back to that player only. */
-    handle(code: string, playerId: string, message: ClientMessage): void {
-        const room = this.rooms.get(code);
-        if (!room) return;
-        const player = room.players.find((p) => p.id === playerId);
-        if (!player) return;
+	/** Handles one message from a connected player. Errors are reported back to that player only. */
+	handle(code: string, playerId: string, message: ClientMessage): void {
+		const room = this.rooms.get(code);
+		if (!room) return;
+		const player = room.players.find((p) => p.id === playerId);
+		if (!player) return;
 
-        try {
-            this.dispatch(room, player, message);
-            this.touch(room);
-            this.broadcast(room);
-        } catch (err) {
-            const messageText =
-                err instanceof Error ? err.message : "Something went wrong";
-            if (err instanceof GameError || err instanceof RoomError) {
-                player.socket?.send({ type: ServerMessageType.Error, message: messageText });
-            } else {
-                console.error(err);
-                player.socket?.send({
-                    type: ServerMessageType.Error,
-                    message: "Internal server error",
-                });
-            }
-        }
-    }
+		try {
+			this.dispatch(room, player, message);
+			this.touch(room);
+			this.broadcast(room);
+		} catch (err) {
+			const messageText = err instanceof Error ? err.message : "Something went wrong";
+			if (err instanceof GameError || err instanceof RoomError) {
+				player.socket?.send({ type: ServerMessageType.Error, message: messageText });
+			} else {
+				console.error(err);
+				player.socket?.send({
+					type: ServerMessageType.Error,
+					message: "Internal server error",
+				});
+			}
+		}
+	}
 
-    /** Returns the player id holding `token` in room `code`, or null if there is no such session. */
-    playerIdFor(code: string, token: string): string | null {
-        const room = this.rooms.get(code.toUpperCase());
-        return room?.players.find((p) => p.token === token)?.id ?? null;
-    }
+	/** Returns the player id holding `token` in room `code`, or null if there is no such session. */
+	playerIdFor(code: string, token: string): string | null {
+		const room = this.rooms.get(code.toUpperCase());
+		return room?.players.find((p) => p.token === token)?.id ?? null;
+	}
 
-    /** Snapshot of a room from one player's point of view. */
-    viewFor(code: string, playerId: string): RoomView {
-        return this.snapshot(this.getRoom(code), playerId);
-    }
+	/** Snapshot of a room from one player's point of view. */
+	viewFor(code: string, playerId: string): RoomView {
+		return this.snapshot(this.getRoom(code), playerId);
+	}
 
-    /* -------------------------------- Internals ------------------------------- */
+	/* -------------------------------- Internals ------------------------------- */
 
-    private dispatch(
-        room: Room,
-        player: PlayerRecord,
-        message: ClientMessage,
-    ): void {
-        const isHost = player.id === room.hostId;
-        switch (message.type) {
-            case ClientMessageType.Settings: {
-                if (!isHost)
-                    throw new RoomError(403, "Only the host can change settings");
-                if (room.game && !room.game.winnerId)
-                    throw new RoomError(409, "Settings can be changed between rounds");
-                room.rules = normalizeRules({ ...room.rules, ...message.rules });
-                return;
-            }
+	private dispatch(room: Room, player: PlayerRecord, message: ClientMessage): void {
+		const isHost = player.id === room.hostId;
+		switch (message.type) {
+			case ClientMessageType.Settings: {
+				if (!isHost) throw new RoomError(403, "Only the host can change settings");
+				if (room.game && !room.game.winnerId)
+					throw new RoomError(409, "Settings can be changed between rounds");
+				room.rules = normalizeRules({ ...room.rules, ...message.rules });
+				return;
+			}
 
-            case ClientMessageType.Start: {
-                if (!isHost)
-                    throw new RoomError(403, "Only the host can start the game");
-                const status = this.statusOf(room);
-                if (status === RoomStatus.Playing || status === RoomStatus.RoundOver) {
-                    throw new RoomError(409, "A game is already in progress");
-                }
-                const playerCount = room.players.length;
-                if (playerCount < MIN_PLAYERS)
-                    throw new RoomError(
-                        409,
-                        `At least ${MIN_PLAYERS} players are needed`,
-                    );
-                // Shuffle and deal first: an invalid card count throws before any state is changed.
-                const game = this.deal(room, message.cardsPerPlayer);
-                room.cardsPerPlayer = message.cardsPerPlayer;
-                for (const p of room.players) p.score = 0;
-                room.gameWinnerId = null;
-                room.lastRoundPoints = null;
-                room.game = game;
-                this.scheduleTurnTimer(room);
-                this.scheduleAutoPlay(room);
-                return;
-            }
+			case ClientMessageType.Start: {
+				if (!isHost) throw new RoomError(403, "Only the host can start the game");
+				const status = this.statusOf(room);
+				if (status === RoomStatus.Playing || status === RoomStatus.RoundOver) {
+					throw new RoomError(409, "A game is already in progress");
+				}
+				const playerCount = room.players.length;
+				if (playerCount < MIN_PLAYERS)
+					throw new RoomError(409, `At least ${MIN_PLAYERS} players are needed`);
+				// Shuffle and deal first: an invalid card count throws before any state is changed.
+				const game = this.deal(room, message.cardsPerPlayer);
+				room.cardsPerPlayer = message.cardsPerPlayer;
+				for (const p of room.players) p.score = 0;
+				room.gameWinnerId = null;
+				room.lastRoundPoints = null;
+				room.game = game;
+				this.scheduleTurnTimer(room);
+				this.scheduleAutoPlay(room);
+				return;
+			}
 
-            case ClientMessageType.NextRound: {
-                if (!isHost)
-                    throw new RoomError(403, "Only the host can start the next round");
-                if (this.statusOf(room) !== RoomStatus.RoundOver)
-                    throw new RoomError(409, "The round is not over yet");
-                room.game = this.deal(room, room.cardsPerPlayer);
-                room.lastRoundPoints = null;
-                this.scheduleTurnTimer(room);
-                this.scheduleAutoPlay(room);
-                return;
-            }
+			case ClientMessageType.NextRound: {
+				if (!isHost) throw new RoomError(403, "Only the host can start the next round");
+				if (this.statusOf(room) !== RoomStatus.RoundOver)
+					throw new RoomError(409, "The round is not over yet");
+				room.game = this.deal(room, room.cardsPerPlayer);
+				room.lastRoundPoints = null;
+				this.scheduleTurnTimer(room);
+				this.scheduleAutoPlay(room);
+				return;
+			}
 
-            case ClientMessageType.ResetRoom: {
-                if (!isHost)
-                    throw new RoomError(403, "Only the host can restart the room");
-                const status = this.statusOf(room);
-                if (status === RoomStatus.Lobby)
-                    throw new RoomError(409, "The room is already in the lobby");
-                if (room.autoTimer) clearTimeout(room.autoTimer);
-                room.autoTimer = null;
-                if (room.turnTimerId) clearTimeout(room.turnTimerId);
-                room.turnTimerId = null;
-                room.turnDeadline = null;
-                room.game = null;
-                room.lastRoundPoints = null;
-                room.gameWinnerId = null;
-                for (const p of room.players) p.score = 0;
-                return;
-            }
+			case ClientMessageType.ResetRoom: {
+				if (!isHost) throw new RoomError(403, "Only the host can restart the room");
+				const status = this.statusOf(room);
+				if (status === RoomStatus.Lobby)
+					throw new RoomError(409, "The room is already in the lobby");
+				if (room.autoTimer) clearTimeout(room.autoTimer);
+				room.autoTimer = null;
+				if (room.turnTimerId) clearTimeout(room.turnTimerId);
+				room.turnTimerId = null;
+				room.turnDeadline = null;
+				room.game = null;
+				room.lastRoundPoints = null;
+				room.gameWinnerId = null;
+				for (const p of room.players) p.score = 0;
+				return;
+			}
 
-            case ClientMessageType.Kick: {
-                if (!isHost)
-                    throw new RoomError(403, "Only the host can remove players");
-                if (this.statusOf(room) !== RoomStatus.Lobby)
-                    throw new RoomError(409, "Players can only be removed in the lobby");
-                if (message.playerId === room.hostId)
-                    throw new RoomError(400, "The host cannot be removed");
-                const target = room.players.find((p) => p.id === message.playerId);
-                if (!target) throw new RoomError(404, "Player not found");
-                this.removePlayer(room, target, "You were removed from the room");
-                return;
-            }
+			case ClientMessageType.Kick: {
+				if (!isHost) throw new RoomError(403, "Only the host can remove players");
+				if (this.statusOf(room) !== RoomStatus.Lobby)
+					throw new RoomError(409, "Players can only be removed in the lobby");
+				if (message.playerId === room.hostId)
+					throw new RoomError(400, "The host cannot be removed");
+				const target = room.players.find((p) => p.id === message.playerId);
+				if (!target) throw new RoomError(404, "Player not found");
+				this.removePlayer(room, target, "You were removed from the room");
+				return;
+			}
 
-            case ClientMessageType.Leave: {
-                this.removePlayer(room, player, null);
-                return;
-            }
+			case ClientMessageType.Leave: {
+				this.removePlayer(room, player, null);
+				return;
+			}
 
-            case ClientMessageType.Action: {
-                if (!room.game) throw new RoomError(409, "No game in progress");
-                const before = room.game;
-                const next = applyAction(before, player.id, message.action as Action);
-                room.game = next;
-                if (!before.winnerId && next.winnerId) this.finishRound(room);
-                this.scheduleTurnTimer(room);
-                this.scheduleAutoPlay(room);
-                return;
-            }
-        }
-    }
+			case ClientMessageType.Action: {
+				if (!room.game) throw new RoomError(409, "No game in progress");
+				const before = room.game;
+				const next = applyAction(before, player.id, message.action as Action);
+				room.game = next;
+				if (!before.winnerId && next.winnerId) this.finishRound(room);
+				this.scheduleTurnTimer(room);
+				this.scheduleAutoPlay(room);
+				return;
+			}
+		}
+	}
 
-    /** Shuffles the deck and deals `cardsPerPlayer` cards to every player in the room. */
-    private deal(room: Room, cardsPerPlayer: number): GameState {
-        return startRound(
-            room.players.map((p) => ({ id: p.id, name: p.name })),
-            room.rules,
-            Math.random,
-            cardsPerPlayer,
-        );
-    }
+	/** Shuffles the deck and deals `cardsPerPlayer` cards to every player in the room. */
+	private deal(room: Room, cardsPerPlayer: number): GameState {
+		return startRound(
+			room.players.map((p) => ({ id: p.id, name: p.name })),
+			room.rules,
+			Math.random,
+			cardsPerPlayer,
+		);
+	}
 
-    /** Removes a player from a room. Transfers host if needed and handles in-progress game adjustments. */
-    private removePlayer(
-        room: Room,
-        target: PlayerRecord,
-        notice: string | null,
-    ): void {
-        room.players = room.players.filter((p) => p.id !== target.id);
-        if (notice) target.socket?.send({ type: ServerMessageType.Error, message: notice });
-        target.socket?.close?.(CloseCode.Removed, notice ?? "left");
-        target.socket = null;
-        if (room.players.length === 0) {
-            if (room.autoTimer) clearTimeout(room.autoTimer);
-            if (room.turnTimerId) clearTimeout(room.turnTimerId);
-            this.rooms.delete(room.code);
-            return;
-        }
-        if (room.hostId === target.id) room.hostId = room.players[0]!.id;
+	/**
+	 * Removes a player from a room. Transfers host if needed and handles in-progress game
+	 * adjustments.
+	 */
+	private removePlayer(room: Room, target: PlayerRecord, notice: string | null): void {
+		room.players = room.players.filter((p) => p.id !== target.id);
+		if (notice) target.socket?.send({ type: ServerMessageType.Error, message: notice });
+		target.socket?.close?.(CloseCode.Removed, notice ?? "left");
+		target.socket = null;
+		if (room.players.length === 0) {
+			if (room.autoTimer) clearTimeout(room.autoTimer);
+			if (room.turnTimerId) clearTimeout(room.turnTimerId);
+			this.rooms.delete(room.code);
+			return;
+		}
+		if (room.hostId === target.id) room.hostId = room.players[0]!.id;
 
-        // If a game was in progress, adjust or reset the game state
-        if (room.game) {
-            if (room.players.length < MIN_PLAYERS) {
-                // Not enough players left to continue playing: reset back to lobby
-                if (room.autoTimer) clearTimeout(room.autoTimer);
-                room.autoTimer = null;
-                if (room.turnTimerId) clearTimeout(room.turnTimerId);
-                room.turnTimerId = null;
-                room.turnDeadline = null;
-                room.game = null;
-                room.lastRoundPoints = null;
-                room.gameWinnerId = null;
-                for (const p of room.players) p.score = 0;
-            } else if (room.game.order.includes(target.id)) {
-                // Player was in the current round
-                if (room.game.winnerId) {
-                    // Round was already over, just remove their cards if needed or leave as is
-                    delete room.game.hands[target.id];
-                    delete room.game.names[target.id];
-                    room.game.order = room.game.order.filter((id) => id !== target.id);
-                } else {
-                    // Put the leaving player's hand cards back into the draw pile
-                    const leftHand = room.game.hands[target.id] ?? [];
-                    if (leftHand.length > 0) {
-                        room.game.drawPile.unshift(...leftHand);
-                    }
-                    delete room.game.hands[target.id];
-                    delete room.game.names[target.id];
+		// If a game was in progress, adjust or reset the game state
+		if (room.game) {
+			if (room.players.length < MIN_PLAYERS) {
+				// Not enough players left to continue playing: reset back to lobby
+				if (room.autoTimer) clearTimeout(room.autoTimer);
+				room.autoTimer = null;
+				if (room.turnTimerId) clearTimeout(room.turnTimerId);
+				room.turnTimerId = null;
+				room.turnDeadline = null;
+				room.game = null;
+				room.lastRoundPoints = null;
+				room.gameWinnerId = null;
+				for (const p of room.players) p.score = 0;
+			} else if (room.game.order.includes(target.id)) {
+				// Player was in the current round
+				if (room.game.winnerId) {
+					// Round was already over, just remove their cards if needed or leave as is
+					delete room.game.hands[target.id];
+					delete room.game.names[target.id];
+					room.game.order = room.game.order.filter((id) => id !== target.id);
+				} else {
+					// Put the leaving player's hand cards back into the draw pile
+					const leftHand = room.game.hands[target.id] ?? [];
+					if (leftHand.length > 0) {
+						room.game.drawPile.unshift(...leftHand);
+					}
+					delete room.game.hands[target.id];
+					delete room.game.names[target.id];
 
-                    const targetIndex = room.game.order.indexOf(target.id);
-                    const wasCurrent = room.game.currentIndex === targetIndex;
-                    const orderLenBefore = room.game.order.length;
+					const targetIndex = room.game.order.indexOf(target.id);
+					const wasCurrent = room.game.currentIndex === targetIndex;
+					const orderLenBefore = room.game.order.length;
 
-                    room.game.order = room.game.order.filter((id) => id !== target.id);
+					room.game.order = room.game.order.filter((id) => id !== target.id);
 
-                    if (room.game.unoAlert === target.id) {
-                        room.game.unoAlert = null;
-                    }
+					if (room.game.unoAlert === target.id) {
+						room.game.unoAlert = null;
+					}
 
-                    if (wasCurrent) {
-                        // Turn moves to next player in current direction
-                        if (room.game.direction === 1) {
-                            room.game.currentIndex = targetIndex % room.game.order.length;
-                        } else {
-                            room.game.currentIndex =
-                                (targetIndex - 1 + room.game.order.length) %
-                                room.game.order.length;
-                        }
-                        room.game.drawnCardId = null;
-                    } else if (targetIndex < room.game.currentIndex) {
-                        room.game.currentIndex -= 1;
-                    }
+					if (wasCurrent) {
+						// Turn moves to next player in current direction
+						if (room.game.direction === 1) {
+							room.game.currentIndex = targetIndex % room.game.order.length;
+						} else {
+							room.game.currentIndex =
+								(targetIndex - 1 + room.game.order.length) % room.game.order.length;
+						}
+						room.game.drawnCardId = null;
+					} else if (targetIndex < room.game.currentIndex) {
+						room.game.currentIndex -= 1;
+					}
 
-                    // If reverse in 2 players was acting like skip or now down to 2 players, state is intact
-                    this.scheduleAutoPlay(room);
-                }
-            }
-        }
-    }
+					// If reverse in 2 players was acting like skip or now down to 2 players, state is intact
+					this.scheduleAutoPlay(room);
+				}
+			}
+		}
+	}
 
-    private finishRound(room: Room): void {
-        if (room.turnTimerId) clearTimeout(room.turnTimerId);
-        room.turnTimerId = null;
-        room.turnDeadline = null;
-        const game = room.game!;
-        const points = roundPoints(game);
-        room.lastRoundPoints = points;
-        const winner = room.players.find((p) => p.id === game.winnerId);
-        if (!winner) return;
-        winner.score += points;
-        if (winner.score >= room.rules.targetScore) room.gameWinnerId = winner.id;
-    }
+	private finishRound(room: Room): void {
+		if (room.turnTimerId) clearTimeout(room.turnTimerId);
+		room.turnTimerId = null;
+		room.turnDeadline = null;
+		const game = room.game!;
+		const points = roundPoints(game);
+		room.lastRoundPoints = points;
+		const winner = room.players.find((p) => p.id === game.winnerId);
+		if (!winner) return;
+		winner.score += points;
+		if (winner.score >= room.rules.targetScore) room.gameWinnerId = winner.id;
+	}
 
-    private scheduleTurnTimer(room: Room): void {
-        if (room.turnTimerId) clearTimeout(room.turnTimerId);
-        room.turnTimerId = null;
-        room.turnDeadline = null;
+	private scheduleTurnTimer(room: Room): void {
+		if (room.turnTimerId) clearTimeout(room.turnTimerId);
+		room.turnTimerId = null;
+		room.turnDeadline = null;
 
-        const game = room.game;
-        if (!game || game.winnerId || room.rules.turnTimer <= 0) return;
+		const game = room.game;
+		if (!game || game.winnerId || room.rules.turnTimer <= 0) return;
 
-        const durationMs = room.rules.turnTimer * 1000;
-        room.turnDeadline = this.now() + durationMs;
+		const durationMs = room.rules.turnTimer * 1000;
+		room.turnDeadline = this.now() + durationMs;
 
-        room.turnTimerId = setTimeout(() => {
-            room.turnTimerId = null;
-            this.handleTurnTimeout(room.code);
-        }, durationMs);
-    }
+		room.turnTimerId = setTimeout(() => {
+			room.turnTimerId = null;
+			this.handleTurnTimeout(room.code);
+		}, durationMs);
+	}
 
-    private handleTurnTimeout(roomCode: string): void {
-        const room = this.rooms.get(roomCode);
-        if (!room || !room.game || room.game.winnerId) return;
+	private handleTurnTimeout(roomCode: string): void {
+		const room = this.rooms.get(roomCode);
+		if (!room || !room.game || room.game.winnerId) return;
 
-        const currentId = room.game.order[room.game.currentIndex];
-        if (!currentId) return;
+		const currentId = room.game.order[room.game.currentIndex];
+		if (!currentId) return;
 
-        try {
-            // Player timed out: force draw
-            let next = applyAction(room.game, currentId, { type: ActionType.Draw });
-            // If turn is still on player and they drew a card, pass the turn
-            if (!next.winnerId && next.order[next.currentIndex] === currentId && next.drawnCardId) {
-                next = applyAction(next, currentId, { type: ActionType.Pass });
-            }
-            room.game = next;
-            if (next.winnerId) this.finishRound(room);
-        } catch (err) {
-            console.error("Turn timeout force-draw error:", err);
-        }
+		try {
+			// Player timed out: force draw
+			let next = applyAction(room.game, currentId, { type: ActionType.Draw });
+			// If turn is still on player and they drew a card, pass the turn
+			if (!next.winnerId && next.order[next.currentIndex] === currentId && next.drawnCardId) {
+				next = applyAction(next, currentId, { type: ActionType.Pass });
+			}
+			room.game = next;
+			if (next.winnerId) this.finishRound(room);
+		} catch (err) {
+			console.error("Turn timeout force-draw error:", err);
+		}
 
-        this.touch(room);
-        this.broadcast(room);
-        this.scheduleTurnTimer(room);
-        this.scheduleAutoPlay(room);
-    }
+		this.touch(room);
+		this.broadcast(room);
+		this.scheduleTurnTimer(room);
+		this.scheduleAutoPlay(room);
+	}
 
-    /**
-     * If the player whose turn it is has no live connection, play for them after a grace period.
-     * Re-scheduled after every state change, so a chain of disconnected players keeps moving.
-     */
-    private scheduleAutoPlay(room: Room): void {
-        if (room.autoTimer) clearTimeout(room.autoTimer);
-        room.autoTimer = null;
-        const game = room.game;
-        if (!game || game.winnerId) return;
-        const currentId = game.order[game.currentIndex]!;
-        const current = room.players.find((p) => p.id === currentId);
-        if (!current || current.socket) return;
+	/**
+	 * If the player whose turn it is has no live connection, play for them after a grace period.
+	 * Re-scheduled after every state change, so a chain of disconnected players keeps moving.
+	 */
+	private scheduleAutoPlay(room: Room): void {
+		if (room.autoTimer) clearTimeout(room.autoTimer);
+		room.autoTimer = null;
+		const game = room.game;
+		if (!game || game.winnerId) return;
+		const currentId = game.order[game.currentIndex]!;
+		const current = room.players.find((p) => p.id === currentId);
+		if (!current || current.socket) return;
 
-        room.autoTimer = setTimeout(() => {
-            room.autoTimer = null;
-            const live = this.rooms.get(room.code);
-            if (!live?.game || live.game.winnerId) return;
-            const turnOwner = live.game.order[live.game.currentIndex]!;
-            const owner = live.players.find((p) => p.id === turnOwner);
-            if (!owner || owner.socket) return;
-            try {
-                live.game = applyAction(
-                    live.game,
-                    owner.id,
-                    suggestAction(live.game, owner.id),
-                );
-                if (live.game.winnerId) this.finishRound(live);
-            } catch (err) {
-                console.error("auto-play failed", err);
-            }
-            this.touch(live);
-            this.broadcast(live);
-            this.scheduleAutoPlay(live);
-        }, config.autoPlayDelayMs);
-    }
+		room.autoTimer = setTimeout(() => {
+			room.autoTimer = null;
+			const live = this.rooms.get(room.code);
+			if (!live?.game || live.game.winnerId) return;
+			const turnOwner = live.game.order[live.game.currentIndex]!;
+			const owner = live.players.find((p) => p.id === turnOwner);
+			if (!owner || owner.socket) return;
+			try {
+				live.game = applyAction(live.game, owner.id, suggestAction(live.game, owner.id));
+				if (live.game.winnerId) this.finishRound(live);
+			} catch (err) {
+				console.error("auto-play failed", err);
+			}
+			this.touch(live);
+			this.broadcast(live);
+			this.scheduleAutoPlay(live);
+		}, config.autoPlayDelayMs);
+	}
 
-    private statusOf(room: Room): RoomStatus {
-        if (!room.game) return RoomStatus.Lobby;
-        if (room.game.winnerId) return room.gameWinnerId ? RoomStatus.GameOver : RoomStatus.RoundOver;
-        return RoomStatus.Playing;
-    }
+	private statusOf(room: Room): RoomStatus {
+		if (!room.game) return RoomStatus.Lobby;
+		if (room.game.winnerId)
+			return room.gameWinnerId ? RoomStatus.GameOver : RoomStatus.RoundOver;
+		return RoomStatus.Playing;
+	}
 
-    private snapshot(room: Room, playerId: string): RoomView {
-        const game = room.game;
-        const roundView = game ? viewFor(game, playerId) : null;
-        return {
-            code: room.code,
-            status: this.statusOf(room),
-            rules: room.rules,
-            hostId: room.hostId,
-            you: playerId,
-            players: room.players.map((p) => ({
-                id: p.id,
-                name: p.name,
-                connected: p.socket !== null,
-                isHost: p.id === room.hostId,
-                score: p.score,
-            })),
-            cardsPerPlayer: room.cardsPerPlayer,
-            round: roundView,
-            lastRoundPoints: room.lastRoundPoints,
-            gameWinnerId: room.gameWinnerId,
-        };
-    }
+	private snapshot(room: Room, playerId: string): RoomView {
+		const game = room.game;
+		const roundView = game ? viewFor(game, playerId) : null;
+		return {
+			code: room.code,
+			status: this.statusOf(room),
+			rules: room.rules,
+			hostId: room.hostId,
+			you: playerId,
+			players: room.players.map((p) => ({
+				id: p.id,
+				name: p.name,
+				connected: p.socket !== null,
+				isHost: p.id === room.hostId,
+				score: p.score,
+			})),
+			cardsPerPlayer: room.cardsPerPlayer,
+			round: roundView,
+			lastRoundPoints: room.lastRoundPoints,
+			gameWinnerId: room.gameWinnerId,
+		};
+	}
 
-    /** Pushes a fresh snapshot to every connected player in the room. */
-    private broadcast(room: Room): void {
-        for (const p of room.players) {
-            p.socket?.send({ type: ServerMessageType.Room, room: this.snapshot(room, p.id) });
-        }
-    }
+	/** Pushes a fresh snapshot to every connected player in the room. */
+	private broadcast(room: Room): void {
+		for (const p of room.players) {
+			p.socket?.send({ type: ServerMessageType.Room, room: this.snapshot(room, p.id) });
+		}
+	}
 
-    private newPlayer(name: string): PlayerRecord {
-        return {
-            id: crypto.randomUUID(),
-            name,
-            token: crypto.randomUUID(),
-            score: 0,
-            socket: null,
-        };
-    }
+	private newPlayer(name: string): PlayerRecord {
+		return {
+			id: crypto.randomUUID(),
+			name,
+			token: crypto.randomUUID(),
+			score: 0,
+			socket: null,
+		};
+	}
 
-    private getRoom(code: string): Room {
-        const room = this.rooms.get(code.toUpperCase());
-        if (!room) throw new RoomError(404, "Room not found");
-        return room;
-    }
+	private getRoom(code: string): Room {
+		const room = this.rooms.get(code.toUpperCase());
+		if (!room) throw new RoomError(404, "Room not found");
+		return room;
+	}
 
-    private touch(room: Room): void {
-        room.lastActive = this.now();
-    }
+	private touch(room: Room): void {
+		room.lastActive = this.now();
+	}
 
-    private sweepIdleRooms(): void {
-        const cutoff = this.now() - config.roomIdleMs;
-        for (const room of this.rooms.values()) {
-            const anyConnected = room.players.some((p) => p.socket !== null);
-            if (!anyConnected && room.lastActive < cutoff) {
-                if (room.autoTimer) clearTimeout(room.autoTimer);
-                this.rooms.delete(room.code);
-            }
-        }
-    }
+	private sweepIdleRooms(): void {
+		const cutoff = this.now() - config.roomIdleMs;
+		for (const room of this.rooms.values()) {
+			const anyConnected = room.players.some((p) => p.socket !== null);
+			if (!anyConnected && room.lastActive < cutoff) {
+				if (room.autoTimer) clearTimeout(room.autoTimer);
+				this.rooms.delete(room.code);
+			}
+		}
+	}
 
-    /** Returns statistics about rooms and active connections. */
-    getStats(): {
-        totalRooms: number;
-        activeRooms: number;
-        totalPlayers: number;
-        connectedPlayers: number;
-    } {
-        let totalPlayers = 0;
-        let connectedPlayers = 0;
-        let activeRooms = 0;
+	/** Returns statistics about rooms and active connections. */
+	getStats(): {
+		totalRooms: number;
+		activeRooms: number;
+		totalPlayers: number;
+		connectedPlayers: number;
+	} {
+		let totalPlayers = 0;
+		let connectedPlayers = 0;
+		let activeRooms = 0;
 
-        for (const room of this.rooms.values()) {
-            let roomConnected = 0;
-            for (const p of room.players) {
-                totalPlayers++;
-                if (p.socket !== null) {
-                    connectedPlayers++;
-                    roomConnected++;
-                }
-            }
-            if (roomConnected > 0) {
-                activeRooms++;
-            }
-        }
+		for (const room of this.rooms.values()) {
+			let roomConnected = 0;
+			for (const p of room.players) {
+				totalPlayers++;
+				if (p.socket !== null) {
+					connectedPlayers++;
+					roomConnected++;
+				}
+			}
+			if (roomConnected > 0) {
+				activeRooms++;
+			}
+		}
 
-        return {
-            totalRooms: this.rooms.size,
-            activeRooms,
-            totalPlayers,
-            connectedPlayers,
-        };
-    }
+		return {
+			totalRooms: this.rooms.size,
+			activeRooms,
+			totalPlayers,
+			connectedPlayers,
+		};
+	}
 
-    /** For tests and graceful shutdown. */
-    dispose(): void {
-        clearInterval(this.sweeper);
-        for (const room of this.rooms.values()) {
-            if (room.autoTimer) clearTimeout(room.autoTimer);
-            if (room.turnTimerId) clearTimeout(room.turnTimerId);
-        }
-        this.rooms.clear();
-    }
+	/** For tests and graceful shutdown. */
+	dispose(): void {
+		clearInterval(this.sweeper);
+		for (const room of this.rooms.values()) {
+			if (room.autoTimer) clearTimeout(room.autoTimer);
+			if (room.turnTimerId) clearTimeout(room.turnTimerId);
+		}
+		this.rooms.clear();
+	}
 }
