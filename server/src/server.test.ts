@@ -63,6 +63,20 @@ const roomOf = (m: ServerMessage): RoomView | null =>
     m.type === "room" ? m.room : null;
 
 describe("REST", () => {
+    test("health endpoint returns process metrics, memory, uptime, and room stats", async () => {
+        const res = await fetch(`${base}/api/health`);
+        expect(res.status).toBe(200);
+        const data = (await res.json()) as any;
+        expect(data.status).toBe("ok");
+        expect(typeof data.uptimeSeconds).toBe("number");
+        expect(typeof data.memory).toBe("string");
+        expect(typeof data.cpu).toBe("string");
+        expect(data.cpu.endsWith("%")).toBe(true);
+        expect(data.connections).toBeDefined();
+        expect(typeof data.connections.concurrentSockets).toBe("number");
+        expect(typeof data.rooms.total).toBe("number");
+    });
+
     test("creates a room and returns a session", async () => {
         const { status, json } = await post("/api/rooms", { name: "Host" });
         expect(status).toBe(200);
@@ -351,7 +365,9 @@ describe("bundled client", () => {
 
     test("API routes still win over the client fallback", async () => {
         const res = await fetch(`${base}/api/health`);
-        expect(await res.json()).toEqual({ ok: true });
+        const json = (await res.json()) as any;
+        expect(json.ok).toBe(true);
+        expect(json.status).toBe("ok");
     });
 });
 

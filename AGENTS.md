@@ -163,11 +163,12 @@ _Last updated: 2026-11-06 (replaced string constants with modular TypeScript enu
 - Updated engine, validation schemas (Elysia / TypeBox), server room manager, sound event engine, and client communication to use strongly typed enums instead of raw string literals.
 - Updated all unit, fuzz, sound event, and integration tests to use enum values.
 - Enhanced Wild Draw Four (+4) card visuals with an authentic 4 overlapping mini-card fan design in the 4 UNO colors with shadows, borders, and a centered +4 pill badge in pure SVG/CSS.
+- Streamlined `/api/health` endpoint with human-readable memory usage (e.g. `48.2 MB`) and normalized CPU usage percentage (e.g. `2.5%`).
 - Added `docker:build` and `docker:run` convenience scripts to root `package.json`.
 - Fixed static file directory resolution (`CLIENT_DIST`) in [server/src/config/index.ts](file:///home/hunter87/Documents/projects/games/uno/server/src/config/index.ts) to support both local workspace execution and bundled Docker container paths.
 
 ### Verified
-- `bun test`: 58 tests pass across 4 test suites (`shared`, `server`, `client/sound`).
+- `bun test`: 59 tests pass across 4 test suites (`shared`, `server`, `client/sound`).
 - `bun run typecheck`: clean across all 3 workspaces (`@uno/shared`, `@uno/server`, `@uno/client`).
 - `bun run build`: production client build succeeds.
 

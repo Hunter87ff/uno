@@ -460,6 +460,39 @@ export class RoomManager {
         }
     }
 
+    /** Returns statistics about rooms and active connections. */
+    getStats(): {
+        totalRooms: number;
+        activeRooms: number;
+        totalPlayers: number;
+        connectedPlayers: number;
+    } {
+        let totalPlayers = 0;
+        let connectedPlayers = 0;
+        let activeRooms = 0;
+
+        for (const room of this.rooms.values()) {
+            let roomConnected = 0;
+            for (const p of room.players) {
+                totalPlayers++;
+                if (p.socket !== null) {
+                    connectedPlayers++;
+                    roomConnected++;
+                }
+            }
+            if (roomConnected > 0) {
+                activeRooms++;
+            }
+        }
+
+        return {
+            totalRooms: this.rooms.size,
+            activeRooms,
+            totalPlayers,
+            connectedPlayers,
+        };
+    }
+
     /** For tests and graceful shutdown. */
     dispose(): void {
         clearInterval(this.sweeper);
