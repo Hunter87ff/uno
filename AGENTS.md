@@ -162,6 +162,7 @@ _Last updated: 2026-11-06 (replaced string constants with modular TypeScript enu
   - Storage keys in client: `StorageKey` enum (`Mute`, `Session`, `Name`).
 - Updated engine, validation schemas (Elysia / TypeBox), server room manager, sound event engine, and client communication to use strongly typed enums instead of raw string literals.
 - Updated all unit, fuzz, sound event, and integration tests to use enum values.
+- Enhanced Wild Draw Four (+4) card visuals with an authentic 4 overlapping mini-card fan design in the 4 UNO colors with shadows, borders, and a centered +4 pill badge in pure SVG/CSS.
 - Added `docker:build` and `docker:run` convenience scripts to root `package.json`.
 - Fixed static file directory resolution (`CLIENT_DIST`) in [server/src/config/index.ts](file:///home/hunter87/Documents/projects/games/uno/server/src/config/index.ts) to support both local workspace execution and bundled Docker container paths.
 

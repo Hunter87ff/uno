@@ -28,11 +28,11 @@ const INK: Record<Color, string> = {
 
 const PINWHEEL = 'conic-gradient(#e03a2f 0 25%, #f7c400 0 50%, #1aa34a 0 75%, #1f6fd6 0)';
 
-const SIZE: Record<CardSize, { box: string; text: string; corner: string; icon: string }> = {
-    xs: { box: 'h-10 w-7 rounded-md border', text: 'text-xs', corner: 'text-[8px]', icon: 'size-4' },
-    sm: { box: 'h-16 w-11 rounded-lg border-2', text: 'text-lg', corner: 'text-[10px]', icon: 'size-6' },
-    md: { box: 'h-24 w-16 rounded-xl border-[3px]', text: 'text-2xl', corner: 'text-xs', icon: 'size-9' },
-    lg: { box: 'h-32 w-[88px] rounded-2xl border-4', text: 'text-3xl', corner: 'text-sm', icon: 'size-12' },
+const SIZE: Record<CardSize, { box: string; text: string; corner: string; icon: string; w4Icon: string }> = {
+    xs: { box: 'h-10 w-7 rounded-md border', text: 'text-xs', corner: 'text-[8px]', icon: 'size-4', w4Icon: 'size-6' },
+    sm: { box: 'h-16 w-11 rounded-lg border-2', text: 'text-lg', corner: 'text-[10px]', icon: 'size-6', w4Icon: 'size-9' },
+    md: { box: 'h-24 w-16 rounded-xl border-[3px]', text: 'text-2xl', corner: 'text-xs', icon: 'size-9', w4Icon: 'size-14' },
+    lg: { box: 'h-32 w-[88px] rounded-2xl border-4', text: 'text-3xl', corner: 'text-sm', icon: 'size-12', w4Icon: 'size-18' },
 };
 
 /* ------------------------------ Icons (SVG) ------------------------------ */
@@ -57,6 +57,59 @@ function ReverseIcon({ color, className }: { color: string; className: string })
                 strokeLinecap="round"
                 strokeLinejoin="round"
             />
+        </svg>
+    );
+}
+
+/** 
+ * Iconic 4 overlapping colored mini-cards for Wild Draw Four (+4),
+ * layered with drop shadows, white inner frames, and a bold +4 callout badge.
+ */
+function WildFourIcon({ className }: { className: string }) {
+    return (
+        <svg viewBox="0 0 48 48" className={className} aria-hidden>
+            <defs>
+                <filter id="w4-shadow" x="-20%" y="-20%" width="150%" height="150%">
+                    <feDropShadow dx="0.8" dy="1.2" stdDeviation="1" floodColor="#000" floodOpacity="0.45" />
+                </filter>
+            </defs>
+            {/* 4 overlapping mini cards fanning out in order: Red (bottom-left), Blue (top-left), Yellow (bottom-right), Green (top-right/front) */}
+            <g filter="url(#w4-shadow)">
+                {/* Red card (bottom-left) */}
+                <rect x="7" y="15" width="15" height="23" rx="2.5" fill="#e03a2f" stroke="#ffffff" strokeWidth="1.2" />
+                <rect x="9" y="17" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
+            </g>
+            <g filter="url(#w4-shadow)">
+                {/* Blue card (top-left) */}
+                <rect x="13" y="7" width="15" height="23" rx="2.5" fill="#1f6fd6" stroke="#ffffff" strokeWidth="1.2" />
+                <rect x="15" y="9" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
+            </g>
+            <g filter="url(#w4-shadow)">
+                {/* Yellow card (bottom-right) */}
+                <rect x="21" y="18" width="15" height="23" rx="2.5" fill="#f7c400" stroke="#ffffff" strokeWidth="1.2" />
+                <rect x="23" y="20" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
+            </g>
+            <g filter="url(#w4-shadow)">
+                {/* Green card (top-right, in front) */}
+                <rect x="26" y="10" width="15" height="23" rx="2.5" fill="#1aa34a" stroke="#ffffff" strokeWidth="1.2" />
+                <rect x="28" y="12" width="11" height="19" rx="1.5" fill="none" stroke="#ffffff" strokeWidth="0.6" strokeOpacity="0.75" />
+            </g>
+            {/* Center +4 badge overlay */}
+            <g filter="url(#w4-shadow)">
+                <ellipse cx="24" cy="24" rx="12" ry="8" fill="#111116" stroke="#ffffff" strokeWidth="1" />
+                <text
+                    x="24"
+                    y="27.5"
+                    textAnchor="middle"
+                    fill="#ffffff"
+                    fontSize="11"
+                    fontWeight="900"
+                    fontFamily="system-ui, -apple-system, sans-serif"
+                    letterSpacing="-0.5px"
+                >
+                    +4
+                </text>
+            </g>
         </svg>
     );
 }
@@ -123,9 +176,7 @@ export function CardFace({
             <span className="absolute inset-x-[10%] inset-y-[12%] rotate-[18deg] rounded-[50%] bg-white" />
             <span className="absolute inset-x-[10%] inset-y-[12%] flex items-center justify-center">
                 {card.type === CardType.Wild4 ? (
-                    <span className="rounded bg-black/80 px-1 font-black leading-tight text-white" style={{ fontSize: 'clamp(9px, 0.55em, 16px)' }}>
-                        +4
-                    </span>
+                    <WildFourIcon className={s.w4Icon} />
                 ) : (
                     center
                 )}
