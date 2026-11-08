@@ -21,25 +21,27 @@ body {
 }
 
 /* Midnight backdrop with soft UNO-coloured glows in each corner. */
-.app-bg {
+.app-bg,
+.game-canvas-bg {
 	min-height: 100%;
-	background:
-		radial-gradient(circle at 8% 0%, rgb(239 68 68 / 0.22), transparent 38%),
-		radial-gradient(circle at 96% 4%, rgb(250 204 21 / 0.14), transparent 36%),
-		radial-gradient(circle at 100% 100%, rgb(34 197 94 / 0.16), transparent 40%),
-		radial-gradient(circle at 0% 100%, rgb(59 130 246 / 0.2), transparent 42%),
-		linear-gradient(160deg, #15102e 0%, #0a0820 55%, #05050f 100%);
+	background-color: #080616;
+	background-image:
+		radial-gradient(ellipse at 5% 15%, rgba(217, 70, 239, 0.18) 0%, transparent 45%),
+		radial-gradient(ellipse at 95% 10%, rgba(99, 102, 241, 0.16) 0%, transparent 45%),
+		radial-gradient(ellipse at 95% 85%, rgba(168, 85, 247, 0.2) 0%, transparent 50%),
+		radial-gradient(ellipse at 5% 90%, rgba(59, 130, 246, 0.16) 0%, transparent 50%),
+		linear-gradient(170deg, #130d2d 0%, #09071a 50%, #04030d 100%);
 }
 
-/* Oval felt table with a wooden rim. */
-.table-felt {
-	background: radial-gradient(ellipse at 50% 40%, #1f8a4c 0%, #136b3a 55%, #0b4524 100%);
+/* Oval felt table with vibrant neon emerald glow rim. */
+.table-felt,
+.game-table-felt {
+	background: radial-gradient(ellipse at 50% 45%, #0f8247 0%, #0a5c32 55%, #04381e 100%);
 	box-shadow:
-		inset 0 0 60px rgb(0 0 0 / 0.55),
-		inset 0 0 0 10px #3b2412,
-		inset 0 0 0 13px #7a4a22,
-		0 30px 60px -20px rgb(0 0 0 / 0.7),
-		0 0 0 1px rgb(255 255 255 / 0.06);
+		0 0 35px 4px rgba(16, 185, 129, 0.45),
+		inset 0 0 30px rgba(0, 0, 0, 0.65),
+		inset 0 0 10px rgba(52, 211, 153, 0.35);
+	border: 3px solid rgba(52, 211, 153, 0.8);
 }
 
 .glass {
@@ -47,6 +49,27 @@ body {
 	border: 1px solid rgb(255 255 255 / 0.1);
 	box-shadow: 0 25px 50px -20px rgb(0 0 0 / 0.6);
 	backdrop-filter: blur(14px);
+}
+
+.game-glass-pod {
+	background: linear-gradient(145deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	box-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.6);
+	backdrop-filter: blur(16px);
+}
+
+.game-dock {
+	background: linear-gradient(165deg, rgba(16, 14, 38, 0.85) 0%, rgba(9, 7, 24, 0.92) 100%);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	box-shadow: 0 -10px 40px -10px rgba(0, 0, 0, 0.7);
+	backdrop-filter: blur(20px);
+}
+
+.turn-active-glow {
+	border-color: #fbbf24 !important;
+	box-shadow:
+		0 0 0 2px rgba(251, 191, 36, 0.9),
+		0 0 24px 4px rgba(251, 191, 36, 0.45) !important;
 }
 
 .text-gradient {

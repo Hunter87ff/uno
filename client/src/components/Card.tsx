@@ -37,28 +37,28 @@ const SIZE: Record<
         text: "text-xs",
         corner: "text-[8px]",
         icon: "size-4",
-        w4Icon: "size-6",
+        w4Icon: "size-5",
     },
     sm: {
         box: "h-16 w-11 rounded-lg border-2",
         text: "text-lg",
         corner: "text-[10px]",
         icon: "size-6",
-        w4Icon: "size-9",
+        w4Icon: "size-8",
     },
     md: {
         box: "h-24 w-16 rounded-xl border-[3px]",
         text: "text-2xl",
         corner: "text-xs",
         icon: "size-9",
-        w4Icon: "size-14",
+        w4Icon: "size-12",
     },
     lg: {
-        box: "h-32 w-[88px] rounded-2xl border-4",
+        box: "h-32 w-22 rounded-2xl border-4",
         text: "text-3xl",
         corner: "text-sm",
         icon: "size-12",
-        w4Icon: "size-18",
+        w4Icon: "size-16",
     },
 };
 
@@ -102,20 +102,13 @@ function ReverseIcon({ color, className }: { color: string; className: string })
  */
 function WildPlusIcon({ count, className }: { count: number; className: string }) {
     return (
-        <svg viewBox="0 0 48 48" className={className} aria-hidden>
-            <defs>
-                <filter id={`w-shadow-${count}`} x="-20%" y="-20%" width="150%" height="150%">
-                    <feDropShadow
-                        dx="0.8"
-                        dy="1.2"
-                        stdDeviation="1"
-                        floodColor="#000"
-                        floodOpacity="0.45"
-                    />
-                </filter>
-            </defs>
+        <svg
+            viewBox="0 0 48 48"
+            className={`${className} drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]`}
+            aria-hidden
+        >
             {/* 4 overlapping mini cards fanning out in order: Red, Blue, Yellow, Green */}
-            <g filter={`url(#w-shadow-${count})`}>
+            <g>
                 <rect
                     x="7"
                     y="15"
@@ -138,7 +131,7 @@ function WildPlusIcon({ count, className }: { count: number; className: string }
                     strokeOpacity="0.75"
                 />
             </g>
-            <g filter={`url(#w-shadow-${count})`}>
+            <g>
                 <rect
                     x="13"
                     y="7"
@@ -161,7 +154,7 @@ function WildPlusIcon({ count, className }: { count: number; className: string }
                     strokeOpacity="0.75"
                 />
             </g>
-            <g filter={`url(#w-shadow-${count})`}>
+            <g>
                 <rect
                     x="21"
                     y="18"
@@ -184,7 +177,7 @@ function WildPlusIcon({ count, className }: { count: number; className: string }
                     strokeOpacity="0.75"
                 />
             </g>
-            <g filter={`url(#w-shadow-${count})`}>
+            <g>
                 <rect
                     x="26"
                     y="10"
@@ -208,22 +201,22 @@ function WildPlusIcon({ count, className }: { count: number; className: string }
                 />
             </g>
             {/* Center +X badge overlay */}
-            <g filter={`url(#w-shadow-${count})`}>
+            <g>
                 <ellipse
                     cx="24"
                     cy="24"
-                    rx="13"
-                    ry="8.5"
+                    rx="13.5"
+                    ry="9"
                     fill="#111116"
                     stroke="#ffffff"
-                    strokeWidth="1.2"
+                    strokeWidth="1.4"
                 />
                 <text
                     x="24"
                     y="27.5"
                     textAnchor="middle"
                     fill="#ffffff"
-                    fontSize={count >= 10 ? "10" : "11"}
+                    fontSize={count >= 10 ? "10" : "11.5"}
                     fontWeight="900"
                     fontFamily="system-ui, -apple-system, sans-serif"
                     letterSpacing="-0.5px"
@@ -237,62 +230,51 @@ function WildPlusIcon({ count, className }: { count: number; className: string }
 
 function DoubleTroubleIcon({ className }: { className: string }) {
     return (
-        <svg viewBox="0 0 48 48" className={className} aria-hidden>
-            <defs>
-                <filter id="dt-shadow" x="-20%" y="-20%" width="150%" height="150%">
-                    <feDropShadow
-                        dx="0.8"
-                        dy="1.2"
-                        stdDeviation="1"
-                        floodColor="#000"
-                        floodOpacity="0.45"
-                    />
-                </filter>
-            </defs>
-            <g filter="url(#dt-shadow)">
-                <rect
-                    x="10"
-                    y="12"
-                    width="16"
-                    height="24"
-                    rx="3"
-                    fill="#e03a2f"
-                    stroke="#ffffff"
-                    strokeWidth="1.2"
-                />
-                <rect
-                    x="22"
-                    y="12"
-                    width="16"
-                    height="24"
-                    rx="3"
-                    fill="#1f6fd6"
-                    stroke="#ffffff"
-                    strokeWidth="1.2"
-                />
-            </g>
-            <g filter="url(#dt-shadow)">
-                <ellipse
-                    cx="24"
-                    cy="24"
-                    rx="12"
-                    ry="8"
-                    fill="#f7c400"
-                    stroke="#111116"
-                    strokeWidth="1"
-                />
-                <text
-                    x="24"
-                    y="27.5"
-                    textAnchor="middle"
-                    fill="#111116"
-                    fontSize="11"
-                    fontWeight="900"
-                    fontFamily="system-ui, -apple-system, sans-serif"
-                >
-                    2×
-                </text>
-            </g>
+        <svg
+            viewBox="0 0 48 48"
+            className={`${className} drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]`}
+            aria-hidden
+        >
+            <rect
+                x="10"
+                y="12"
+                width="16"
+                height="24"
+                rx="3"
+                fill="#e03a2f"
+                stroke="#ffffff"
+                strokeWidth="1.2"
+            />
+            <rect
+                x="22"
+                y="12"
+                width="16"
+                height="24"
+                rx="3"
+                fill="#1f6fd6"
+                stroke="#ffffff"
+                strokeWidth="1.2"
+            />
+            <ellipse
+                cx="24"
+                cy="24"
+                rx="12"
+                ry="8"
+                fill="#f7c400"
+                stroke="#111116"
+                strokeWidth="1.2"
+            />
+            <text
+                x="24"
+                y="27.5"
+                textAnchor="middle"
+                fill="#111116"
+                fontSize="11"
+                fontWeight="900"
+                fontFamily="system-ui, -apple-system, sans-serif"
+            >
+                2×
+            </text>
         </svg>
     );
 }
@@ -457,16 +439,16 @@ export function CardFace({
         <>
             {/* Tilted oval background; the glyph inside stays upright. */}
             <span className="absolute inset-x-[10%] inset-y-[12%] rotate-[18deg] rounded-[50%] bg-white" />
-            <span className="absolute inset-x-[10%] inset-y-[12%] flex items-center justify-center">
+            <span className="absolute inset-x-[10%] inset-y-[12%] flex items-center justify-center z-10">
                 {center}
             </span>
             <span
-                className={`absolute top-[4%] left-[6%] leading-none font-black text-white drop-shadow ${s.corner}`}
+                className={`absolute top-[4%] left-[6%] leading-none font-black text-white drop-shadow ${s.corner} z-10`}
             >
                 {label}
             </span>
             <span
-                className={`absolute right-[6%] bottom-[4%] rotate-180 leading-none font-black text-white drop-shadow ${s.corner}`}
+                className={`absolute right-[6%] bottom-[4%] rotate-180 leading-none font-black text-white drop-shadow ${s.corner} z-10`}
             >
                 {label}
             </span>

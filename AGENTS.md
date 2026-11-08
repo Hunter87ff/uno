@@ -144,46 +144,25 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 ## Agent state
 
-_Last updated: 2026-11-08 (implemented changes.md: dedicated room configuration, custom cards, plus card stacking, turn timers, horizontal/vertical layouts, and elimination card limits)._
+_Last updated: 2026-11-09 (refined game UI to exactly match target design: curved background ambient neon sweeps, dedicated SVG fanned mini UNO cards in opponent pods, oval emerald felt table with cyan-emerald neon rim, clean top header bar with double card logo and action pills, and bottom hand dock with pagination and sparkle playable badge)._
 
 ### Done
 
 - Bun workspace scaffold (`shared`, `server`, `client`).
-- Modularized domain enums into `shared/src/types.ts`:
-    - `Color`: `Red`, `Yellow`, `Green`, `Blue`
-    - `SpecialColor`: `Wild`
-    - `CardType`: `Number`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Wild6`, `Wild10`
-    - `RoomStatus`: `Lobby`, `Playing`, `RoundOver`, `GameOver`
-    - `ActionType`: `Play`, `Draw`, `Pass`, `CatchUno`, `CallUno`, `PlayShield`
-    - `ClientMessageType`: `Settings`, `Start`, `NextRound`, `ResetRoom`, `Kick`, `Leave`, `Action`
-    - `ServerMessageType`: `Room`, `Error`
-    - `CloseCode`: `InvalidSession`, `Removed`, `ForbiddenOrigin`
-    - `SfxType`: Audio cues (`Play`, `Skip`, `Reverse`, `Draw2`, `Wild`, `Wild4`, `Draw`, `Shuffle`, `Turn`, `Uno`, `Catch`, `RoundWin`, `GameWin`, `Join`, `Error`, `DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Eliminated`)
-    - UI primitives in client (`client/src/components/ui.tsx`): preserved original styling and interface contract without modifications.
-    - Storage keys in client: `StorageKey` enum (`Mute`, `Session`, `Name`).
-- Implemented all features from `changes.md`:
-    - **Dedicated Room Configuration Module (`client/src/components/RoomSettingsModal.tsx`)**:
-        - Accessible via "⚙ Room Settings" button in the lobby.
-        - Host controls for target score, plus card stacking, turn timer, elimination card limit, and custom cards.
-        - Personal display preference: Horizontal (default) vs Vertical window layout modes.
-    - **Custom Expansion Cards**:
-        - "Double Trouble": allows player to play two cards in one turn.
-        - "Swap Hands": rotates all players' hands in play direction.
-        - "Snatch": swaps the player's entire hand with a chosen opponent (1-on-1 hand exchange).
-        - "Shield": protects player from negative effects for one turn; 1 in deck, usable anytime (even out of turn).
-        - "Plus Six (+6)" & "Plus Ten (+10)": wild cards adding 6 or 10 pending draws.
-        - Pure SVG/CSS icons and corner glyphs designed for all cards in `client/src/components/Card.tsx`.
-    - **Updated Game Rules**:
-        - Stacking: same or higher number plus cards (+2, +4, +6, +10) pass the draw penalty on.
-        - Turn timer: default 30s; server-enforced timeout forces draw and passes turn, with live countdown display in client.
-        - Elimination limit: optional max card threshold; players exceeding it are eliminated and spectate the rest of the round.
-        - Game window layout: Horizontal (default) with toggle to Vertical mode.
-- Synthesized Web Audio effects for all new actions and card events (`DoubleTrouble`, `SwapHands`, `Snatch`, `Shield`, `Eliminated`).
-- Added comprehensive unit and integration test coverage for all new card mechanics, stacking rules, elimination, and settings updates.
-- Fixed round scoring bug when players are eliminated: card points from eliminated players' hands are preserved in `eliminatedPoints` and awarded to the round winner, and scoreboard ranks the winner above opponents on tied points.
-- Enabled all custom cards by default in `DEFAULT_CUSTOM_CARDS`, `DEFAULT_RULES`, server rule normalization, and the room settings UI.
-- Updated Swap Hands, Double Trouble, Snatch, and Shield mechanics to preserve current active color instead of prompting for a color change.
-- Updated Snatch card mechanic to execute a complete 1-on-1 hand swap between the player and their selected opponent.
+- Fixed Wild Draw 4 (+4), Wild +6, Wild +10, and Double Trouble card rendering: replaced SVG `<filter id="...">` references that failed to resolve in browsers with pure vector artwork and CSS drop shadows, added explicit `z-10` layer ordering over the white card oval, and updated card width classes (`w-22`) for reliable CSS compilation.
+- Modularized domain enums into `shared/src/types.ts`.
+- Complete game UI overhaul ("less like a website, more like a game"):
+    - **Atmosphere & Theme**: Deep midnight gaming palette with magenta/violet ambient glow sweeps (`.game-canvas-bg`), glassmorphic pods (`.game-glass-pod`), and golden active turn glow (`.turn-active-glow`).
+    - **Header Bar**: Overlapping double UNO cards mark, bold room code, "Play to {targetScore}" pill, restart & leave action pills on desktop, and hamburger menu button on mobile.
+    - **Center Felt Table**: Luminous oval emerald felt table with neon cyan-emerald halo (`.game-table-felt`), draw pile with remaining count label, and discard pile with active color indicator badge on top-right.
+    - **Opponent Seat Pods**: Rounded frosted glass cards displaying vibrant initial avatars, player name, card count, an inline CSS/SVG mini fan of overlapping red UNO cards (`OpponentCardFan`), and golden neon glowing active turn badge with live turn timer.
+    - **Adaptive Layouts**:
+        - Desktop: Orbital seating arrangement around the oval table (top row, left column, right column, bottom row).
+        - Mobile: Stacked 2-column opponent grids above and below the center table.
+    - **Bottom Hand Dock**: Anchored glass HUD dock (`.game-dock`) featuring `Your hand • X cards` header, glowing `✦ Y playable` badge, interactive overlapping cards with hover lift, `<` and `>` arrow navigation, pagination dots (`● ○ ○ ○`) on mobile/multi-page, and integrated Quick Action HUD for Draw, Pass, Call UNO (hot red pulse), and Shield.
+    - **Mobile Game Menu**: Collapsible modal menu for mobile devices providing room status, rules, layout mode toggle, game log, room restart, and leave actions.
+- Synthesized Web Audio effects for all actions and card events.
+- Unit and integration test suites passing cleanly across all workspaces.
 
 ### Verified
 
