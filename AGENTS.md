@@ -105,6 +105,9 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 - TypeScript strict everywhere. Keep the engine **pure**: `applyAction` returns a new state (it clones) and throws
   `GameError` for illegal moves. No I/O, timers, or globals in `shared/`. Use the injected `rng` for randomness.
+- Engine readability: spell out names (`state` not `s`, `playerId` not `pid`); one behaviour per helper
+  (`absorbWithShield`, `requireTurn`-style guards); per-card effects live in `applyCardEffects`, not in a giant
+  `doPlay` switch. Preserve existing error message wording — tests and clients rely on it.
 - Add a rule-level test to `shared/src/engine.test.ts` for every rule change. If you change engine behaviour, run
   `bun test shared` (the fuzz test catches invariant breaks).
 - Tailwind v4: write class names as literal strings so they are detected. Dynamic class fragments such as
@@ -144,10 +147,14 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 ## Agent state
 
-_Last updated: 2026-11-10 (automatically pass/skip turn when a drawn card is unplayable)._
+_Last updated: 2026-11-10 (engine refactor: readable state names, per-behaviour helpers)._
 
 ### Done
 
+- Refactored [shared/src/engine.ts](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine.ts) for readability
+  without behaviour changes: `state`/`playerId` naming throughout, DRAW_PENALTY and FORBIDDEN_STARTING_CARDS tables,
+  `absorbWithShield`, `resolveChosenColor`, `swapAllHands`, `performSnatch`, and per-card effects extracted to
+  `applyCardEffects` (no more ~70-line switch in `doPlay`). Exports, rule behaviour, and error message wording unchanged.
 - Bun workspace scaffold (`shared`, `server`, `client`).
 - Automatically pass/skip turn upon drawing if the drawn card is unplayable:
     - Updated `applyAction(..., ActionType.Draw)` in [engine.ts](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine.ts) so that if the drawn card is not playable (`!isPlayable(s, pid, card)`), the turn auto-passes immediately without requiring the player to click Pass.

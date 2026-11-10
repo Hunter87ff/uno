@@ -97,7 +97,7 @@ export class GameError extends Error {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 Helpers                                    */
+/*                                 Constants                                  */
 /* -------------------------------------------------------------------------- */
 
 const LOG_LIMIT = 60;
@@ -116,6 +116,32 @@ const LABELS: Record<CardType, string> = {
     [CardType.Wild6]: "Wild Draw Six",
     [CardType.Wild10]: "Wild Draw Ten",
 };
+
+/** Cards a penalty the next player must draw (or answer with a higher plus / a Shield). */
+const DRAW_PENALTY: Record<
+    CardType.Draw2 | CardType.Wild4 | CardType.Wild6 | CardType.Wild10,
+    number
+> = {
+    [CardType.Draw2]: 2,
+    [CardType.Wild4]: 4,
+    [CardType.Wild6]: 6,
+    [CardType.Wild10]: 10,
+};
+
+/** Card types that may not be the first flipped card of a round. */
+const FORBIDDEN_STARTING_CARDS = new Set<CardType>([
+    CardType.Wild4,
+    CardType.Wild6,
+    CardType.Wild10,
+    CardType.SwapHands,
+    CardType.DoubleTrouble,
+    CardType.Snatch,
+    CardType.Shield,
+]);
+
+/* -------------------------------------------------------------------------- */
+/*                                 Helpers                                    */
+/* -------------------------------------------------------------------------- */
 
 export function plusValue(card: Card): number | null {
     switch (card.type) {
@@ -137,121 +163,130 @@ export function describeCard(card: Card, color: Color | SpecialColor.Wild = card
     return color === SpecialColor.Wild || keepsCurrentColor(card) ? label : `${color} ${label}`;
 }
 
-function mod(n: number, m: number): number {
-    return ((n % m) + m) % m;
+function mod(value: number, modulus: number): number {
+    return ((value % modulus) + modulus) % modulus;
 }
 
-function log(s: GameState, message: string): void {
-    s.log.push(message);
-    if (s.log.length > LOG_LIMIT) s.log.splice(0, s.log.length - LOG_LIMIT);
+function log(state: GameState, message: string): void {
+    state.log.push(message);
+    if (state.log.length > LOG_LIMIT) state.log.splice(0, state.log.length - LOG_LIMIT);
 }
 
-function topCard(s: GameState): Card {
-    return s.discardPile[s.discardPile.length - 1]!;
+function topCard(state: GameState): Card {
+    return state.discardPile[state.discardPile.length - 1]!;
 }
 
-function currentPlayer(s: GameState): string {
-    return s.order[s.currentIndex]!;
+function currentPlayer(state: GameState): string {
+    return state.order[state.currentIndex]!;
 }
 
-function nameOf(s: GameState, pid: string): string {
-    return s.names[pid] ?? pid;
+function nameOf(state: GameState, playerId: string): string {
+    return state.names[playerId] ?? playerId;
 }
 
-function passTurn(s: GameState, steps = 1): void {
-    if (s.order.length === 0) return;
-    s.currentIndex = mod(s.currentIndex + steps * s.direction, s.order.length);
-    s.drawnCardId = null;
-    s.extraPlays = 0;
+function passTurn(state: GameState, steps = 1): void {
+    if (state.order.length === 0) return;
+    state.currentIndex = mod(state.currentIndex + steps * state.direction, state.order.length);
+    state.drawnCardId = null;
+    state.extraPlays = 0;
 }
 
-/** Draws `count` cards for `pid` from the draw pile, recycling the discard pile if needed. */
-function drawCards(s: GameState, pid: string, count: number): Card[] {
+/** Draws `count` cards for `playerId` from the draw pile, recycling the discard pile if needed. */
+function drawCards(state: GameState, playerId: string, count: number): Card[] {
     const drawn: Card[] = [];
-    if (!s.hands[pid]) s.hands[pid] = [];
+    if (!state.hands[playerId]) state.hands[playerId] = [];
     for (let i = 0; i < count; i++) {
-        if (s.drawPile.length === 0) {
-            if (s.discardPile.length <= 1) break; // no cards left to draw
-            const top = s.discardPile.pop()!;
-            s.drawPile = shuffle(s.discardPile);
-            s.discardPile = [top];
+        if (state.drawPile.length === 0) {
+            if (state.discardPile.length <= 1) break; // no cards left to draw
+            const top = state.discardPile.pop()!;
+            state.drawPile = shuffle(state.discardPile);
+            state.discardPile = [top];
         }
-        const card = s.drawPile.pop();
+        const card = state.drawPile.pop();
         if (card) {
-            s.hands[pid]!.push(card);
+            state.hands[playerId]!.push(card);
             drawn.push(card);
         }
     }
     return drawn;
 }
 
-/** Checks whether a player exceeded the elimination card limit and handles elimination. */
-function checkElimination(s: GameState, pid: string): boolean {
-    if (typeof s.rules.eliminationLimit !== "number") return false;
-    const hand = s.hands[pid];
-    if (!hand || hand.length <= s.rules.eliminationLimit) return false;
+/**
+ * Checks whether `playerId` exceeded the elimination card limit and, if so, removes them from the
+ * round. Returns true when the player was eliminated.
+ */
+function checkElimination(state: GameState, playerId: string): boolean {
+    if (typeof state.rules.eliminationLimit !== "number") return false;
+    const hand = state.hands[playerId];
+    if (!hand || hand.length <= state.rules.eliminationLimit) return false;
 
     // Track points from the eliminated player's cards so the round winner receives them
     let handPoints = 0;
-    for (const card of hand) {
-        handPoints += cardPoints(card);
-    }
-    s.eliminatedPoints = (s.eliminatedPoints ?? 0) + handPoints;
+    for (const card of hand) handPoints += cardPoints(card);
+    state.eliminatedPoints += handPoints;
 
     log(
-        s,
-        `${nameOf(s, pid)} exceeded the card limit of ${s.rules.eliminationLimit} (${hand.length} cards, ${handPoints} pts) and is eliminated!`,
+        state,
+        `${nameOf(state, playerId)} exceeded the card limit of ${state.rules.eliminationLimit} (${hand.length} cards, ${handPoints} pts) and is eliminated!`,
     );
-    s.eliminated.push(pid);
-    if (hand.length > 0) {
-        s.drawPile.unshift(...hand);
-    }
-    delete s.hands[pid];
-    delete s.shielded[pid];
-    if (s.unoAlert === pid) s.unoAlert = null;
+    state.eliminated.push(playerId);
+    if (hand.length > 0) state.drawPile.unshift(...hand);
+    delete state.hands[playerId];
+    delete state.shielded[playerId];
+    if (state.unoAlert === playerId) state.unoAlert = null;
 
-    const idx = s.order.indexOf(pid);
-    if (idx !== -1) {
-        const wasCurrent = s.currentIndex === idx;
-        s.order.splice(idx, 1);
-        if (s.order.length <= 1) {
-            s.winnerId = s.order[0] ?? null;
-            if (s.winnerId) {
-                log(s, `${nameOf(s, s.winnerId)} is the last survivor and wins the round!`);
+    const seatIndex = state.order.indexOf(playerId);
+    if (seatIndex !== -1) {
+        const wasCurrent = state.currentIndex === seatIndex;
+        state.order.splice(seatIndex, 1);
+        if (state.order.length <= 1) {
+            state.winnerId = state.order[0] ?? null;
+            if (state.winnerId) {
+                log(state, `${nameOf(state, state.winnerId)} is the last survivor and wins the round!`);
             }
             return true;
         }
         if (wasCurrent) {
-            s.currentIndex = mod(idx, s.order.length);
-            s.drawnCardId = null;
-            s.extraPlays = 0;
-        } else if (idx < s.currentIndex) {
-            s.currentIndex -= 1;
+            state.currentIndex = mod(seatIndex, state.order.length);
+            state.drawnCardId = null;
+            state.extraPlays = 0;
+        } else if (seatIndex < state.currentIndex) {
+            state.currentIndex -= 1;
         }
     }
     return true;
 }
 
-function checkAllEliminations(s: GameState): void {
-    if (typeof s.rules.eliminationLimit !== "number") return;
-    const players = [...s.order];
-    for (const pid of players) {
-        if (checkElimination(s, pid) && s.winnerId) {
-            break;
-        }
+function checkAllEliminations(state: GameState): void {
+    if (typeof state.rules.eliminationLimit !== "number") return;
+    for (const playerId of [...state.order]) {
+        if (checkElimination(state, playerId) && state.winnerId) break;
     }
 }
 
 /** Pick the color in hand that appears on the most cards. Falls back to red. */
 function mostCommonColor(hand: Card[]): Color {
-    const counts = new Map<Color, number>(COLORS.map((c) => [c, 0]));
+    const counts = new Map<Color, number>(COLORS.map((color) => [color, 0]));
     for (const card of hand) {
-        if (card.color !== SpecialColor.Wild)
-            counts.set(card.color as Color, (counts.get(card.color as Color) ?? 0) + 1);
+        if (card.color !== SpecialColor.Wild) {
+            const color = card.color as Color;
+            counts.set(color, (counts.get(color) ?? 0) + 1);
+        }
     }
     let best: Color = COLORS[0];
     for (const color of COLORS) if (counts.get(color)! > counts.get(best)!) best = color;
     return best;
+}
+
+/**
+ * Removes the target player's shield buff and logs the absorption if they had one.
+ * Returns true when a shield was consumed and cancelled the card's effect.
+ */
+function absorbWithShield(state: GameState, targetId: string, effectName: string): boolean {
+    if (!state.shielded[targetId]) return false;
+    state.shielded[targetId] = false;
+    log(state, `${nameOf(state, targetId)}'s Shield absorbed the ${effectName}!`);
+    return true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -280,48 +315,40 @@ export function startRound(
         cards: { ...DEFAULT_RULES.cards, ...(rules?.cards ?? {}) },
     };
     if (players.length < 2) throw new GameError("At least two players are required");
-    const count = Math.floor(cardsPerPlayer);
-    if (count < CARDS_PER_PLAYER.min || count > CARDS_PER_PLAYER.max) {
+    const dealCount = Math.floor(cardsPerPlayer);
+    if (dealCount < CARDS_PER_PLAYER.min || dealCount > CARDS_PER_PLAYER.max) {
         throw new GameError(
             `Cards per player must be between ${CARDS_PER_PLAYER.min} and ${CARDS_PER_PLAYER.max}`,
         );
     }
 
     const deck = shuffle(buildDeck(finalRules.cards), rng);
-    if (players.length * count + 1 > deck.length) {
+    if (players.length * dealCount + 1 > deck.length) {
         throw new GameError(
-            `${players.length} players with ${count} cards each do not fit in the deck (${deck.length} cards)`,
+            `${players.length} players with ${dealCount} cards each do not fit in the deck (${deck.length} cards)`,
         );
     }
 
     const hands: Record<string, Card[]> = {};
     const names: Record<string, string> = {};
-    for (const p of players) {
-        hands[p.id] = deck.splice(deck.length - count, count);
-        names[p.id] = p.name;
+    for (const player of players) {
+        hands[player.id] = deck.splice(deck.length - dealCount, dealCount);
+        names[player.id] = player.name;
     }
 
-    // Draw starting card. Per official rules, a Wild Draw Four and special wild expansion cards
-    // cannot be the starting card: if drawn, return them to the bottom of the deck and draw another.
+    // Per official rules, a Wild Draw Four and special wild expansion cards cannot be the starting
+    // card: if flipped, return them to the bottom of the deck and draw another.
     const discard: Card[] = [];
-    let start = deck.pop()!;
-    while (
-        start.type === CardType.Wild4 ||
-        start.type === CardType.Wild6 ||
-        start.type === CardType.Wild10 ||
-        start.type === CardType.SwapHands ||
-        start.type === CardType.DoubleTrouble ||
-        start.type === CardType.Snatch ||
-        start.type === CardType.Shield
-    ) {
-        deck.unshift(start);
-        start = deck.pop()!;
+    let startingCard = deck.pop()!;
+    while (FORBIDDEN_STARTING_CARDS.has(startingCard.type)) {
+        deck.unshift(startingCard);
+        startingCard = deck.pop()!;
     }
-    discard.push(start);
+    discard.push(startingCard);
 
-    const s: GameState = {
+    const state: GameState = {
         rules: finalRules,
-        order: players.map((p) => p.id),
+        order: players.map((player) => player.id),
         eliminated: [],
         names,
         hands,
@@ -342,77 +369,78 @@ export function startRound(
     };
 
     // If the starter is a wild card, pick a random starting color.
-    s.activeColor =
-        start.color === SpecialColor.Wild
+    state.activeColor =
+        startingCard.color === SpecialColor.Wild
             ? COLORS[Math.floor(rng() * COLORS.length)]!
-            : (start.color as Color);
+            : (startingCard.color as Color);
 
-    log(s, `Round started. Starting card is ${describeCard(start, s.activeColor)}.`);
+    log(state, `Round started. Starting card is ${describeCard(startingCard, state.activeColor)}.`);
 
     // Apply starting card effects.
-    switch (start.type) {
+    switch (startingCard.type) {
         case CardType.Skip:
-            log(s, `${nameOf(s, currentPlayer(s))} is skipped.`);
-            passTurn(s, 1);
+            log(state, `${nameOf(state, currentPlayer(state))} is skipped.`);
+            passTurn(state, 1);
             break;
         case CardType.Reverse:
-            s.direction = -1;
-            log(s, "Play direction reversed.");
+            state.direction = -1;
+            log(state, "Play direction reversed.");
             break;
         case CardType.Draw2:
-            s.pendingDraw = 2;
+            state.pendingDraw = 2;
             break;
         default:
             break;
     }
 
-    return s;
+    return state;
 }
 
 /** Calculates points awarded to the round winner from cards left in opponents' hands. */
-export function roundPoints(s: GameState): number {
-    if (!s.winnerId) return 0;
-    let total = s.eliminatedPoints ?? 0;
-    for (const [pid, hand] of Object.entries(s.hands)) {
-        if (pid === s.winnerId) continue;
+export function roundPoints(state: GameState): number {
+    if (!state.winnerId) return 0;
+    let total = state.eliminatedPoints;
+    for (const [playerId, hand] of Object.entries(state.hands)) {
+        if (playerId === state.winnerId) continue;
         for (const card of hand) total += cardPoints(card);
     }
     return total;
 }
 
-/** Returns null if `card` may be played by `pid` right now, otherwise a human-readable reason. */
-export function playError(s: GameState, pid: string, card: Card): string | null {
-    if (s.winnerId) return "The round is over";
-    const top = topCard(s);
+/** Returns null if `card` may be played by `playerId` right now, otherwise a human-readable reason. */
+export function playError(state: GameState, playerId: string, card: Card): string | null {
+    if (state.winnerId) return "The round is over";
+    const top = topCard(state);
 
-    if (s.pendingDraw > 0) {
-        if (s.rules.stacking) {
+    if (state.pendingDraw > 0) {
+        if (state.rules.stacking) {
             const topPlus = plusValue(top);
             const cardPlus = plusValue(card);
-            // Stacking rule: next player can play another same or higher number plus card to stack the effect
-            if (topPlus !== null && cardPlus !== null && cardPlus >= topPlus) {
-                return null;
-            }
+            // Stacking rule: the next player may answer a plus card with another
+            // same or higher number plus card to stack the effect
+            if (topPlus !== null && cardPlus !== null && cardPlus >= topPlus) return null;
         }
-        // Shield card can be played during turn to absorb pending draws
+        // Shield can be played on the player's turn to absorb the pending draw
         if (card.type === CardType.Shield) return null;
-        return `You must draw ${s.pendingDraw} cards`;
+        return `You must draw ${state.pendingDraw} cards`;
     }
 
-    if (s.drawnCardId && card.id !== s.drawnCardId) {
+    if (state.drawnCardId && card.id !== state.drawnCardId) {
         return "You can only play the card you just drew";
     }
 
     if (isWild(card)) return null;
-    if (card.color === s.activeColor) return null;
-    if (card.type === CardType.Number && top.type === CardType.Number && card.value === top.value)
+    if (card.color === state.activeColor) return null;
+    if (card.type === CardType.Number && top.type === CardType.Number && card.value === top.value) {
         return null;
+    }
     if (card.type !== CardType.Number && card.type === top.type) return null;
     return "That card doesn't match the active color or number";
 }
 
-function isPlayable(s: GameState, pid: string, card: Card): boolean {
-    return playError(s, pid, card) === null;
+/** True when `playerId` may legally play `card` right now. */
+function isPlayable(state: GameState, playerId: string, card: Card): boolean {
+    return playError(state, playerId, card) === null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -425,395 +453,372 @@ function isPlayable(s: GameState, pid: string, card: Card): boolean {
  */
 export function applyAction(state: GameState, playerId: string, action: Action): GameState {
     if (state.winnerId) throw new GameError("The round is over");
-    const s = structuredClone(state);
+    const workingState = structuredClone(state);
 
-    // PlayShield can be done during turn
+    // Playing a shield is only allowed on the player's own turn
     if (action.type === ActionType.PlayShield) {
-        requireTurn(s, playerId);
-        return doPlayShield(s, playerId, action.cardId);
+        requireTurn(workingState, playerId);
+        return playShieldCard(workingState, playerId, action.cardId);
     }
 
     // Only a normal action closes the UNO catch window; calling UNO or catching does not.
-    if (action.type !== ActionType.CatchUno && action.type !== ActionType.CallUno)
-        s.unoAlert = null;
+    if (action.type !== ActionType.CatchUno && action.type !== ActionType.CallUno) {
+        workingState.unoAlert = null;
+    }
 
     switch (action.type) {
         case ActionType.Play:
-            return doPlay(s, playerId, action);
+            return playCard(workingState, playerId, action);
         case ActionType.Draw:
-            return doDraw(s, playerId);
+            return drawCard(workingState, playerId);
         case ActionType.Pass:
-            return doPass(s, playerId);
+            return passCards(workingState, playerId);
         case ActionType.CatchUno:
-            return doCatch(s, playerId, action.target);
+            return catchUno(workingState, playerId, action.target);
         case ActionType.CallUno:
-            return doCallUno(s, playerId);
+            return callUno(workingState, playerId);
         default:
             throw new GameError("Unknown action");
     }
 }
 
-function requireTurn(s: GameState, pid: string): void {
-    if (currentPlayer(s) !== pid) throw new GameError("It is not your turn");
+function requireTurn(state: GameState, playerId: string): void {
+    if (currentPlayer(state) !== playerId) throw new GameError("It is not your turn");
 }
 
-function doPlayShield(s: GameState, pid: string, cardId: string): GameState {
-    const hand = s.hands[pid];
+function playShieldCard(state: GameState, playerId: string, cardId: string): GameState {
+    const hand = state.hands[playerId];
     if (!hand) throw new GameError("You have no cards in hand");
-    const index = hand.findIndex((c) => c.id === cardId);
-    if (index === -1) throw new GameError("That card is not in your hand");
-    const card = hand[index]!;
+    const cardIndex = hand.findIndex((card) => card.id === cardId);
+    if (cardIndex === -1) throw new GameError("That card is not in your hand");
+    const card = hand[cardIndex]!;
     if (card.type !== CardType.Shield) throw new GameError("That card is not a Shield card");
 
-    hand.splice(index, 1);
-    s.discardPile.push(card);
-    if (s.drawnCardId === cardId) {
-        s.drawnCardId = null;
-    }
-    log(s, `${nameOf(s, pid)} activated a Shield!`);
+    hand.splice(cardIndex, 1);
+    state.discardPile.push(card);
+    if (state.drawnCardId === cardId) state.drawnCardId = null;
+    log(state, `${nameOf(state, playerId)} activated a Shield!`);
 
-    // If facing pending draws, absorb them immediately
-    if (s.pendingDraw > 0) {
-        log(s, `${nameOf(s, pid)}'s Shield absorbed the draw penalty of ${s.pendingDraw} cards!`);
-        s.pendingDraw = 0;
-        s.shielded[pid] = false;
+    // A shield facing pending draws absorbs them immediately; otherwise it guards future effects
+    if (state.pendingDraw > 0) {
+        log(state, `${nameOf(state, playerId)}'s Shield absorbed the draw penalty of ${state.pendingDraw} cards!`);
+        state.pendingDraw = 0;
+        state.shielded[playerId] = false;
     } else {
-        s.shielded[pid] = true;
+        state.shielded[playerId] = true;
     }
 
     if (hand.length === 0) {
-        s.winnerId = pid;
-        log(s, `${nameOf(s, pid)} went out and won the round!`);
-        return s;
+        state.winnerId = playerId;
+        log(state, `${nameOf(state, playerId)} went out and won the round!`);
+        return state;
     }
 
-    if (hand.length === 1) {
-        s.unoAlert = pid;
-    }
+    if (hand.length === 1) state.unoAlert = playerId;
 
-    // Handling extra play if active from earlier Double Trouble
-    const hasRemainingExtraPlays = s.extraPlays > 1;
-    if (s.extraPlays > 0) {
-        s.extraPlays -= 1;
-    }
-    if (!hasRemainingExtraPlays) {
-        passTurn(s, 1);
-    }
-    return s;
+    const hasExtraPlayPending = state.extraPlays > 1;
+    if (state.extraPlays > 0) state.extraPlays -= 1;
+    if (!hasExtraPlayPending) passTurn(state, 1);
+    return state;
 }
 
-function doPlay(
-    s: GameState,
-    pid: string,
-    action: Extract<Action, { type: ActionType.Play }>,
-): GameState {
-    const hand = s.hands[pid];
-    if (!hand) throw new GameError("You are not active in this round");
-    const index = hand.findIndex((c) => c.id === action.cardId);
-    if (index === -1) throw new GameError("That card is not in your hand");
-    const card = hand[index]!;
-
-    requireTurn(s, pid);
-
-    const err = playError(s, pid, card);
-    if (err) throw new GameError(err);
-
-    // Shield card played as a Play action during turn
-    if (card.type === CardType.Shield) {
-        return doPlayShield(s, pid, card.id);
-    }
-
-    let chosen: Color;
+/** Resolves the active color for a just-played card (wilds require the player's declaration). */
+function resolveChosenColor(state: GameState, card: Card, declaredColor?: Color): Color {
     if (changesColor(card)) {
-        if (!action.color || !(COLORS as readonly string[]).includes(action.color)) {
+        if (!declaredColor || !(COLORS as readonly string[]).includes(declaredColor)) {
             throw new GameError("Choose a color for the wild card");
         }
-        chosen = action.color;
-    } else if (keepsCurrentColor(card)) {
-        chosen = s.activeColor;
+        return declaredColor;
+    }
+    if (keepsCurrentColor(card)) return state.activeColor;
+    return card.color as Color;
+}
+
+/** Swap Hands: every players receives their new hand from the neighbour they give theirs to. */
+function swapAllHands(state: GameState): void {
+    const playerCount = state.order.length;
+    const previousHands = new Map(
+        state.order.map((playerId) => [playerId, [...(state.hands[playerId] ?? [])]]),
+    );
+    for (let seat = 0; seat < playerCount; seat++) {
+        const receiverId = state.order[seat]!;
+        const giverSeat = state.direction === 1 ? mod(seat - 1, playerCount) : mod(seat + 1, playerCount);
+        const giverId = state.order[giverSeat]!;
+        state.hands[receiverId] = previousHands.get(giverId)!;
+    }
+    log(state, "Swap Hands! All players swapped hands in the direction of play.");
+}
+
+/** Snatch: the player and chosen target swap their remaining hands directly. */
+function performSnatch(
+    state: GameState,
+    playerId: string,
+    action: Extract<Action, { type: ActionType.Play }>,
+): GameState {
+    if (!action.target) throw new GameError("Choose a player to snatch cards from");
+    const targetId = action.target;
+    if (!state.order.includes(targetId) || targetId === playerId) {
+        throw new GameError("Invalid target player for snatch");
+    }
+
+    if (state.shielded[targetId]) {
+        state.shielded[targetId] = false;
+        log(
+            state,
+            `${nameOf(state, playerId)} tried to snatch cards from ${nameOf(state, targetId)}, but their Shield protected them!`,
+        );
     } else {
-        chosen = card.color as Color;
-    }
+        const targetHand = state.hands[targetId] ?? [];
+        const playerHand = [...state.hands[playerId]!];
+        state.hands[playerId] = [...targetHand];
+        state.hands[targetId] = playerHand;
+        log(state, `${nameOf(state, playerId)} snatched ${nameOf(state, targetId)}'s hand! They swapped cards.`);
 
-    hand.splice(index, 1);
-    s.discardPile.push(card);
-    s.activeColor = chosen;
-    s.drawnCardId = null;
-    log(s, `${nameOf(s, pid)} played ${describeCard(card, chosen)}`);
+        // The stolen hand may no longer be on exactly one card
+        if (state.unoAlert === playerId && state.hands[playerId]!.length !== 1) state.unoAlert = null;
+        if (state.unoAlert === targetId && state.hands[targetId]!.length !== 1) state.unoAlert = null;
 
-    if (hand.length === 0) {
-        s.winnerId = pid;
-        log(s, `${nameOf(s, pid)} went out and won the round!`);
-        return s;
-    }
-
-    if (hand.length === 1) {
-        if (!action.uno) s.unoAlert = pid;
-    }
-
-    const n = s.order.length;
-
-    // Double Trouble: grants 1 extra play to the same player
-    if (card.type === CardType.DoubleTrouble) {
-        s.extraPlays += 1;
-        log(s, `${nameOf(s, pid)} activated Double Trouble! They get to play a second card.`);
-        return s;
-    }
-
-    // Swap Hands: everyone swaps hand with the next player in direction of play
-    if (card.type === CardType.SwapHands) {
-        const oldHands: Record<string, Card[]> = {};
-        for (const p of s.order) oldHands[p] = [...(s.hands[p] ?? [])];
-        for (let i = 0; i < n; i++) {
-            const receiverId = s.order[i]!;
-            const giverIdx = s.direction === 1 ? mod(i - 1, n) : mod(i + 1, n);
-            const giverId = s.order[giverIdx]!;
-            s.hands[receiverId] = oldHands[giverId]!;
+        if (state.hands[playerId]!.length === 0) {
+            state.winnerId = playerId;
+            log(state, `${nameOf(state, playerId)} went out and won the round!`);
+            return state;
         }
-        log(s, "Swap Hands! All players swapped hands in the direction of play.");
-        checkAllEliminations(s);
-        if (s.winnerId) return s;
-
-        if (s.extraPlays > 0) {
-            s.extraPlays -= 1;
-            return s;
-        }
-        passTurn(s, 1);
-        return s;
-    }
-
-    // Snatch: swap all cards directly between player and chosen target player
-    if (card.type === CardType.Snatch) {
-        if (!action.target) throw new GameError("Choose a player to snatch cards from");
-        const targetId = action.target;
-        if (!s.order.includes(targetId) || targetId === pid) {
-            throw new GameError("Invalid target player for snatch");
-        }
-        if (s.shielded[targetId]) {
-            s.shielded[targetId] = false;
-            log(
-                s,
-                `${nameOf(s, pid)} tried to snatch cards from ${nameOf(s, targetId)}, but their Shield protected them!`,
-            );
-        } else {
-            const targetHand = s.hands[targetId] ?? [];
-            const myRemainingHand = [...hand];
-            s.hands[pid] = [...targetHand];
-            s.hands[targetId] = myRemainingHand;
-            log(s, `${nameOf(s, pid)} snatched ${nameOf(s, targetId)}'s hand! They swapped cards.`);
-
-            if (s.unoAlert === pid && s.hands[pid].length !== 1) s.unoAlert = null;
-            if (s.unoAlert === targetId && s.hands[targetId].length !== 1) s.unoAlert = null;
-
-            if (s.hands[pid].length === 0) {
-                s.winnerId = pid;
-                log(s, `${nameOf(s, pid)} went out and won the round!`);
-                return s;
-            }
-            if (s.hands[targetId].length === 0) {
-                s.winnerId = targetId;
-                log(s, `${nameOf(s, targetId)} went out and won the round!`);
-                return s;
-            }
-
-            checkElimination(s, pid);
-            checkElimination(s, targetId);
-            if (s.winnerId) return s;
+        if (state.hands[targetId]!.length === 0) {
+            state.winnerId = targetId;
+            log(state, `${nameOf(state, targetId)} went out and won the round!`);
+            return state;
         }
 
-        if (s.extraPlays > 0) {
-            s.extraPlays -= 1;
-            return s;
-        }
-        passTurn(s, 1);
-        return s;
+        checkElimination(state, playerId);
+        checkElimination(state, targetId);
+        if (state.winnerId) return state;
     }
 
-    // Handling extra play if active from earlier Double Trouble
-    const hasRemainingExtraPlays = s.extraPlays > 1;
-    if (s.extraPlays > 0) {
-        s.extraPlays -= 1;
+    if (state.extraPlays > 0) {
+        state.extraPlays -= 1;
+        return state;
     }
+    passTurn(state, 1);
+    return state;
+}
 
-    const nextTargetId = s.order[mod(s.currentIndex + s.direction, s.order.length)]!;
+/** Applies the standard card effects (Skip / Reverse / plus cards etc.) and advances the turn. */
+function applyCardEffects(state: GameState, card: Card): void {
+    const playerCount = state.order.length;
+    const hasExtraPlayPending = state.extraPlays > 1;
+    if (state.extraPlays > 0) state.extraPlays -= 1;
+    const nextPlayerId = state.order[mod(state.currentIndex + state.direction, playerCount)]!;
+
+    // With extra plays left, the same player plays again instead of the turn passing on
+    const advanceTurn = (steps: number = 1) => {
+        if (!hasExtraPlayPending) passTurn(state, steps);
+    };
 
     switch (card.type) {
         case CardType.Number:
         case CardType.Wild:
-            if (!hasRemainingExtraPlays) passTurn(s, 1);
+            advanceTurn();
             break;
-        case CardType.Skip:
-            if (s.shielded[nextTargetId]) {
-                s.shielded[nextTargetId] = false;
-                log(s, `${nameOf(s, nextTargetId)}'s Shield absorbed the Skip!`);
-                if (!hasRemainingExtraPlays) passTurn(s, 1);
+
+        case CardType.Skip: {
+            if (absorbWithShield(state, nextPlayerId, "Skip")) advanceTurn();
+            else advanceTurn(2);
+            break;
+        }
+
+        case CardType.Reverse: {
+            if (playerCount === 2) {
+                // With two players, reverse acts like skip
+                if (absorbWithShield(state, nextPlayerId, "Skip")) advanceTurn();
+                else advanceTurn(2);
             } else {
-                if (!hasRemainingExtraPlays) passTurn(s, 2);
+                state.direction = state.direction === 1 ? -1 : 1;
+                advanceTurn();
             }
             break;
-        case CardType.Reverse:
-            if (n === 2) {
-                if (s.shielded[nextTargetId]) {
-                    s.shielded[nextTargetId] = false;
-                    log(s, `${nameOf(s, nextTargetId)}'s Shield absorbed the Skip!`);
-                    if (!hasRemainingExtraPlays) passTurn(s, 1);
-                } else {
-                    if (!hasRemainingExtraPlays) passTurn(s, 2); // with two players, reverse acts like skip
-                }
-            } else {
-                s.direction = s.direction === 1 ? -1 : 1;
-                if (!hasRemainingExtraPlays) passTurn(s, 1);
-            }
-            break;
+        }
+
         case CardType.Draw2:
-            s.pendingDraw += 2;
-            if (s.shielded[nextTargetId]) {
-                s.shielded[nextTargetId] = false;
-                s.pendingDraw = 0;
-                log(s, `${nameOf(s, nextTargetId)}'s Shield absorbed the Draw Two!`);
-            }
-            if (!hasRemainingExtraPlays) passTurn(s, 1);
-            break;
         case CardType.Wild4:
-            s.pendingDraw += 4;
-            if (s.shielded[nextTargetId]) {
-                s.shielded[nextTargetId] = false;
-                s.pendingDraw = 0;
-                log(s, `${nameOf(s, nextTargetId)}'s Shield absorbed the Wild Draw Four!`);
-            }
-            if (!hasRemainingExtraPlays) passTurn(s, 1);
-            break;
         case CardType.Wild6:
-            s.pendingDraw += 6;
-            if (s.shielded[nextTargetId]) {
-                s.shielded[nextTargetId] = false;
-                s.pendingDraw = 0;
-                log(s, `${nameOf(s, nextTargetId)}'s Shield absorbed the Wild Draw Six!`);
-            }
-            if (!hasRemainingExtraPlays) passTurn(s, 1);
+        case CardType.Wild10: {
+            state.pendingDraw += DRAW_PENALTY[card.type];
+            if (absorbWithShield(state, nextPlayerId, LABELS[card.type])) state.pendingDraw = 0;
+            advanceTurn();
             break;
-        case CardType.Wild10:
-            s.pendingDraw += 10;
-            if (s.shielded[nextTargetId]) {
-                s.shielded[nextTargetId] = false;
-                s.pendingDraw = 0;
-                log(s, `${nameOf(s, nextTargetId)}'s Shield absorbed the Wild Draw Ten!`);
-            }
-            if (!hasRemainingExtraPlays) passTurn(s, 1);
-            break;
+        }
+
+        // DoubleTrouble, SwapHands, Snatch and Shield are handled before reaching this switch
     }
-    return s;
 }
 
-function doDraw(s: GameState, pid: string): GameState {
-    requireTurn(s, pid);
+/** Validates and plays a regular card, then either wins, grants special effects, or moves the turn. */
+function playCard(
+    state: GameState,
+    playerId: string,
+    action: Extract<Action, { type: ActionType.Play }>,
+): GameState {
+    const hand = state.hands[playerId];
+    if (!hand) throw new GameError("You are not active in this round");
+    const cardIndex = hand.findIndex((card) => card.id === action.cardId);
+    if (cardIndex === -1) throw new GameError("That card is not in your hand");
+    const card = hand[cardIndex]!;
 
-    if (s.pendingDraw > 0) {
-        const count = s.pendingDraw;
-        drawCards(s, pid, count);
-        s.pendingDraw = 0;
-        log(s, `${nameOf(s, pid)} drew ${count} cards`);
-        checkElimination(s, pid);
-        if (s.winnerId) return s;
-        passTurn(s, 1);
-        return s;
+    requireTurn(state, playerId);
+
+    const illegalReason = playError(state, playerId, card);
+    if (illegalReason) throw new GameError(illegalReason);
+
+    // Shield cards follow their own dedicated flow, playable on the player's turn
+    if (card.type === CardType.Shield) return playShieldCard(state, playerId, card.id);
+
+    const chosenColor = resolveChosenColor(state, card, action.color);
+
+    hand.splice(cardIndex, 1);
+    state.discardPile.push(card);
+    state.activeColor = chosenColor;
+    state.drawnCardId = null;
+    log(state, `${nameOf(state, playerId)} played ${describeCard(card, chosenColor)}`);
+
+    if (hand.length === 0) {
+        state.winnerId = playerId;
+        log(state, `${nameOf(state, playerId)} went out and won the round!`);
+        return state;
     }
 
-    if (s.drawnCardId) throw new GameError("You already drew a card this turn");
-    const [card] = drawCards(s, pid, 1);
+    if (hand.length === 1 && !action.uno) state.unoAlert = playerId;
+
+    if (card.type === CardType.DoubleTrouble) {
+        state.extraPlays += 1;
+        log(state, `${nameOf(state, playerId)} activated Double Trouble! They get to play a second card.`);
+        return state;
+    }
+
+    if (card.type === CardType.SwapHands) {
+        swapAllHands(state);
+        checkAllEliminations(state);
+        if (state.winnerId) return state;
+
+        if (state.extraPlays > 0) {
+            state.extraPlays -= 1;
+            return state;
+        }
+        passTurn(state, 1);
+        return state;
+    }
+
+    if (card.type === CardType.Snatch) return performSnatch(state, playerId, action);
+
+    applyCardEffects(state, card);
+    return state;
+}
+
+function drawCard(state: GameState, playerId: string): GameState {
+    requireTurn(state, playerId);
+
+    if (state.pendingDraw > 0) {
+        const penalty = state.pendingDraw;
+        drawCards(state, playerId, penalty);
+        state.pendingDraw = 0;
+        log(state, `${nameOf(state, playerId)} drew ${penalty} cards`);
+        checkElimination(state, playerId);
+        if (state.winnerId) return state;
+        passTurn(state, 1);
+        return state;
+    }
+
+    if (state.drawnCardId) throw new GameError("You already drew a card this turn");
+    const [card] = drawCards(state, playerId, 1);
     if (!card) throw new GameError("There are no cards left to draw");
-    s.drawnCardId = card.id;
-    log(s, `${nameOf(s, pid)} drew a card`);
-    checkElimination(s, pid);
-    if (s.winnerId) return s;
+    state.drawnCardId = card.id;
+    log(state, `${nameOf(state, playerId)} drew a card`);
+    checkElimination(state, playerId);
+    if (state.winnerId) return state;
 
     // If the drawn card cannot be played, auto-pass the turn immediately
-    if (!isPlayable(s, pid, card)) {
-        s.drawnCardId = null;
-        passTurn(s, 1);
+    if (!isPlayable(state, playerId, card)) {
+        state.drawnCardId = null;
+        passTurn(state, 1);
     }
 
-    return s;
+    return state;
 }
 
-function doPass(s: GameState, pid: string): GameState {
-    requireTurn(s, pid);
-    if (s.pendingDraw > 0) throw new GameError(`You must draw ${s.pendingDraw} cards`);
-    if (!s.drawnCardId && s.extraPlays === 0) throw new GameError("Draw a card before passing");
-    log(s, `${nameOf(s, pid)} passed`);
-    passTurn(s, 1);
-    return s;
+function passCards(state: GameState, playerId: string): GameState {
+    requireTurn(state, playerId);
+    if (state.pendingDraw > 0) throw new GameError(`You must draw ${state.pendingDraw} cards`);
+    if (!state.drawnCardId && state.extraPlays === 0) throw new GameError("Draw a card before passing");
+    log(state, `${nameOf(state, playerId)} passed`);
+    passTurn(state, 1);
+    return state;
 }
 
-function doCallUno(s: GameState, pid: string): GameState {
-    const hand = s.hands[pid];
-    if (!hand || hand.length > 2)
+function callUno(state: GameState, playerId: string): GameState {
+    const hand = state.hands[playerId];
+    if (!hand || hand.length > 2) {
         throw new GameError("You can only call UNO with two or fewer cards");
-    s.unoCalls += 1;
-    if (s.unoAlert === pid) {
-        s.unoAlert = null;
     }
-    log(s, `${nameOf(s, pid)} says UNO!`);
-    return s;
+    state.unoCalls += 1;
+    if (state.unoAlert === playerId) state.unoAlert = null;
+    log(state, `${nameOf(state, playerId)} says UNO!`);
+    return state;
 }
 
-function doCatch(s: GameState, pid: string, target: string): GameState {
-    if (s.unoAlert !== target) throw new GameError("There is no UNO to catch");
-    if (target === pid) throw new GameError("You can't catch yourself");
-    const targetHand = s.hands[target];
-    if (!targetHand || targetHand.length !== 1)
+function catchUno(state: GameState, catcherId: string, targetId: string): GameState {
+    if (state.unoAlert !== targetId) throw new GameError("There is no UNO to catch");
+    if (targetId === catcherId) throw new GameError("You can't catch yourself");
+    const targetHand = state.hands[targetId];
+    if (!targetHand || targetHand.length !== 1) {
         throw new GameError("That player is no longer on one card");
-
-    if (s.shielded[target]) {
-        s.shielded[target] = false;
-        s.unoAlert = null;
-        log(
-            s,
-            `${nameOf(s, pid)} tried to catch ${nameOf(s, target)}, but their Shield protected them!`,
-        );
-        return s;
     }
 
-    drawCards(s, target, 2);
-    s.unoAlert = null;
-    log(s, `${nameOf(s, pid)} caught ${nameOf(s, target)} without UNO: draws 2`);
-    checkElimination(s, target);
-    return s;
+    if (state.shielded[targetId]) {
+        state.shielded[targetId] = false;
+        state.unoAlert = null;
+        log(
+            state,
+            `${nameOf(state, catcherId)} tried to catch ${nameOf(state, targetId)}, but their Shield protected them!`,
+        );
+        return state;
+    }
+
+    drawCards(state, targetId, 2);
+    state.unoAlert = null;
+    log(state, `${nameOf(state, catcherId)} caught ${nameOf(state, targetId)} without UNO: draws 2`);
+    checkElimination(state, targetId);
+    return state;
 }
 
-/** Chooses a sensible action for `pid`. Used to keep the game moving when a player is disconnected. */
-export function suggestAction(s: GameState, pid: string): Action {
-    const hand = s.hands[pid];
+/** Chooses a sensible action for `playerId`. Used to keep the game moving when a player is disconnected. */
+export function suggestAction(state: GameState, playerId: string): Action {
+    const hand = state.hands[playerId];
     if (!hand) return { type: ActionType.Draw };
 
-    // If shielded card is in hand and facing pending draws, use it
-    if (s.pendingDraw > 0) {
-        const shield = hand.find((c) => c.type === CardType.Shield);
+    // A Shield is the best answer to pending draws
+    if (state.pendingDraw > 0) {
+        const shield = hand.find((card) => card.type === CardType.Shield);
         if (shield) return { type: ActionType.PlayShield, cardId: shield.id };
     }
 
-    const playable = hand.filter((c) => isPlayable(s, pid, c));
-    if (playable.length > 0) {
-        const card = playable.find((c) => !isWild(c)) ?? playable[0]!;
+    const playableCards = hand.filter((card) => isPlayable(state, playerId, card));
+    if (playableCards.length > 0) {
+        const card = playableCards.find((candidate) => !isWild(candidate)) ?? playableCards[0]!;
         const color = changesColor(card) ? mostCommonColor(hand) : undefined;
-        let target: string | undefined = undefined;
+        let target: string | undefined;
         if (card.type === CardType.Snatch) {
-            const opponents = s.order.filter((id) => id !== pid && (s.hands[id]?.length ?? 0) > 0);
+            const opponents = state.order.filter(
+                (id) => id !== playerId && (state.hands[id]?.length ?? 0) > 0,
+            );
             if (opponents.length > 0) {
-                opponents.sort((a, b) => (s.hands[a]?.length ?? 0) - (s.hands[b]?.length ?? 0));
+                opponents.sort((a, b) => (state.hands[a]?.length ?? 0) - (state.hands[b]?.length ?? 0));
                 target = opponents[0];
             }
         }
-        return {
-            type: ActionType.Play,
-            cardId: card.id,
-            color,
-            uno: true,
-            target,
-        };
+        return { type: ActionType.Play, cardId: card.id, color, uno: true, target };
     }
-    if (s.pendingDraw > 0) return { type: ActionType.Draw };
-    return s.drawnCardId ? { type: ActionType.Pass } : { type: ActionType.Draw };
+
+    if (state.pendingDraw > 0) return { type: ActionType.Draw };
+    return state.drawnCardId ? { type: ActionType.Pass } : { type: ActionType.Draw };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -852,39 +857,39 @@ export interface PublicRound {
     log: string[];
 }
 
-export function viewFor(s: GameState, viewerId: string): PublicRound {
-    const hand = s.hands[viewerId] ?? [];
-    const isMyTurn = currentPlayer(s) === viewerId && !s.winnerId;
-    const allIds = [...s.order, ...s.eliminated];
+export function viewFor(state: GameState, viewerId: string): PublicRound {
+    const hand = state.hands[viewerId] ?? [];
+    const isMyTurn = currentPlayer(state) === viewerId && !state.winnerId;
+    const allIds = [...state.order, ...state.eliminated];
 
     return {
-        order: allIds.map((id) => ({
-            id,
-            name: nameOf(s, id),
-            cardCount: s.hands[id]?.length ?? 0,
-            eliminated: s.eliminated.includes(id),
-            shielded: Boolean(s.shielded[id]),
+        order: allIds.map((playerId) => ({
+            id: playerId,
+            name: nameOf(state, playerId),
+            cardCount: state.hands[playerId]?.length ?? 0,
+            eliminated: state.eliminated.includes(playerId),
+            shielded: Boolean(state.shielded[playerId]),
         })),
-        eliminated: s.eliminated,
-        currentId: s.winnerId ? null : currentPlayer(s),
-        direction: s.direction,
-        activeColor: s.activeColor,
-        top: topCard(s),
-        drawPileCount: s.drawPile.length,
-        pendingDraw: s.pendingDraw,
-        unoAlert: s.unoAlert,
-        unoCalls: s.unoCalls,
-        winnerId: s.winnerId,
+        eliminated: state.eliminated,
+        currentId: state.winnerId ? null : currentPlayer(state),
+        direction: state.direction,
+        activeColor: state.activeColor,
+        top: topCard(state),
+        drawPileCount: state.drawPile.length,
+        pendingDraw: state.pendingDraw,
+        unoAlert: state.unoAlert,
+        unoCalls: state.unoCalls,
+        winnerId: state.winnerId,
         hand,
         playableIds: isMyTurn
-            ? hand.filter((c) => isPlayable(s, viewerId, c)).map((c) => c.id)
+            ? hand.filter((card) => isPlayable(state, viewerId, card)).map((card) => card.id)
             : [],
-        drawnCardId: isMyTurn ? s.drawnCardId : null,
-        extraPlays: s.extraPlays,
-        shieldedPlayers: Object.keys(s.shielded).filter((id) => s.shielded[id]),
-        hasShield: Boolean(s.shielded[viewerId]) || hand.some((c) => c.type === CardType.Shield),
+        drawnCardId: isMyTurn ? state.drawnCardId : null,
+        extraPlays: state.extraPlays,
+        shieldedPlayers: Object.keys(state.shielded).filter((playerId) => state.shielded[playerId]),
+        hasShield: Boolean(state.shielded[viewerId]) || hand.some((card) => card.type === CardType.Shield),
         turnDeadline: null,
-        eliminationLimit: s.rules.eliminationLimit,
-        log: s.log,
+        eliminationLimit: state.rules.eliminationLimit,
+        log: state.log,
     };
 }
