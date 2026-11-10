@@ -289,7 +289,7 @@ export function RoomSettingsModal({
 							<SwitchRow
 								badge="🛡"
 								label="Shield (1 in deck)"
-								description="Protects from negative effects (draw penalties, skips, snatch, catches) for one turn. Playable anytime!"
+								description="Protects from negative effects (draw penalties, skips, snatch, catches) for one turn. Playable on your turn."
 								checked={cards.shield}
 								disabled={!isHost}
 								onChange={(v) => updateCard("shield", v)}

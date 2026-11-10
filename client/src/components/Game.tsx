@@ -63,6 +63,17 @@ export function Game({
 	const [unoArmed, setUnoArmed] = useState(false);
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 	const [showLogModal, setShowLogModal] = useState(false);
+	const [copiedCode, setCopiedCode] = useState(false);
+
+	const copyCode = async () => {
+		try {
+			await navigator.clipboard.writeText(room.code);
+			setCopiedCode(true);
+			setTimeout(() => setCopiedCode(false), 1500);
+		} catch {
+			// Clipboard may be unavailable
+		}
+	};
 
 	// Live Turn Timer countdown
 	const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -82,7 +93,6 @@ export function Game({
 
 	const playable = new Set(round.playableIds);
 	const handCount = round.hand.length;
-	const shieldInHand = round.hand.find((c) => c.type === CardType.Shield);
 
 	const canDraw = isMyTurn && !round.drawnCardId;
 	const canPass =
@@ -94,10 +104,6 @@ export function Game({
 
 	function playCard(card: Card) {
 		if (isEliminated) return;
-		if (card.type === CardType.Shield) {
-			act({ type: ActionType.PlayShield, cardId: card.id });
-			return;
-		}
 		if (!isMyTurn || !playable.has(card.id)) return;
 
 		// Snatch needs target selection first
@@ -106,8 +112,12 @@ export function Game({
 			return;
 		}
 
-		// Double Trouble & Swap Hands do not change color: play immediately
-		if (card.type === CardType.DoubleTrouble || card.type === CardType.SwapHands) {
+		// Double Trouble, Swap Hands & Shield do not change color: play immediately
+		if (
+			card.type === CardType.DoubleTrouble ||
+			card.type === CardType.SwapHands ||
+			card.type === CardType.Shield
+		) {
 			act({ type: ActionType.Play, cardId: card.id, uno: unoArmed });
 			setUnoArmed(false);
 			return;
@@ -278,12 +288,20 @@ export function Game({
 			<header className="relative flex items-center justify-between px-4 py-3 sm:px-6 z-20">
 				{/* Left: UNO Icon + Room Code + Target Score */}
 				<div className="flex items-center gap-3">
-					<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={copyCode}
+						title="Click to copy room code"
+						className="group flex items-center gap-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 transition cursor-pointer active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+					>
 						<UnoHeaderLogo />
 						<span className="font-black text-xl tracking-wide text-white">
 							{room.code}
 						</span>
-					</div>
+						<span className="text-[10px] font-semibold tracking-wider uppercase text-white/50 group-hover:text-white/80 transition pl-0.5">
+							{copiedCode ? "✓" : "⧉"}
+						</span>
+					</button>
 					<span className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs font-medium text-white/90 shadow-sm backdrop-blur-md">
 						Play to {room.rules.targetScore}
 					</span>
@@ -710,12 +728,6 @@ export function Game({
 					if (!unoArmed) act({ type: ActionType.CallUno });
 					setUnoArmed((v) => !v);
 				}}
-				shieldInHand={shieldInHand}
-				onPlayShield={
-					shieldInHand
-						? () => act({ type: ActionType.PlayShield, cardId: shieldInHand.id })
-						: undefined
-				}
 			/>
 
 			{/* Mobile Drawer Menu Modal */}
@@ -723,12 +735,20 @@ export function Game({
 				<Modal label="Game Menu">
 					<Panel className="space-y-4">
 						<div className="flex items-center justify-between border-b border-white/10 pb-3">
-							<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={copyCode}
+								title="Click to copy room code"
+								className="group flex items-center gap-2 rounded-lg px-2 py-1 transition hover:bg-white/10 cursor-pointer"
+							>
 								<UnoHeaderLogo />
 								<span className="font-black text-lg text-white">
 									Room {room.code}
 								</span>
-							</div>
+								<span className="text-xs text-white/50 group-hover:text-white transition">
+									{copiedCode ? "✓ Copied" : "⧉"}
+								</span>
+							</button>
 							<button
 								type="button"
 								onClick={() => setMobileMenuOpen(false)}
@@ -1125,8 +1145,6 @@ function Hand({
 	turnText,
 	unoArmed,
 	onToggleUno,
-	shieldInHand,
-	onPlayShield,
 }: {
 	round: PublicRound;
 	onPlay: (card: Card) => void;
@@ -1140,8 +1158,6 @@ function Hand({
 	turnText: string;
 	unoArmed: boolean;
 	onToggleUno: () => void;
-	shieldInHand?: Card;
-	onPlayShield?: () => void;
 }) {
 	const playable = new Set(round.playableIds);
 	const playableCount = round.playableIds.length;
@@ -1216,8 +1232,8 @@ function Hand({
 				</div>
 			</div>
 
-			{/* Quick Action Controls HUD (Turn info, Draw, Pass, UNO, Shield) */}
-			{(isMyTurn || handCount <= 2 || shieldInHand) && (
+			{/* Quick Action Controls HUD (Turn info, Draw, Pass, UNO) */}
+			{(isMyTurn || handCount <= 2) && (
 				<div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 my-1.5 rounded-xl bg-white/5 border border-white/10 text-xs">
 					<div className="flex items-center gap-2 text-white/80 min-w-0">
 						{isMyTurn && (
@@ -1238,15 +1254,6 @@ function Hand({
 						)}
 					</div>
 					<div className="flex items-center gap-1.5 ml-auto">
-						{shieldInHand && (
-							<button
-								type="button"
-								onClick={onPlayShield}
-								className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
-							>
-								🛡 Shield
-							</button>
-						)}
 						{isMyTurn && canDraw && (
 							<button
 								type="button"
@@ -1312,8 +1319,7 @@ function Hand({
 						<p className="py-6 text-sm text-white/50">No cards in hand.</p>
 					)}
 					{round.hand.map((card, i) => {
-						const isPlayable =
-							(!disabled && playable.has(card.id)) || card.type === CardType.Shield;
+						const isPlayable = !disabled && playable.has(card.id);
 						return (
 							<div
 								key={card.id}

@@ -304,8 +304,18 @@ describe("playing cards", () => {
 describe("drawing", () => {
 	test("drawing is allowed even when a playable card exists", () => {
 		const s = setup({ hands: { a: [card("x", CardType.Number, Color.Red, 3)], b: [], c: [] } });
+		s.drawPile.push(card("drawn", CardType.Number, Color.Red, 5));
 		const next = applyAction(s, "a", { type: ActionType.Draw });
-		expect(next.drawnCardId).toBeTruthy();
+		expect(next.drawnCardId).toBe("drawn");
+	});
+
+	test("auto-passes turn if the drawn card is not playable", () => {
+		const s = setup({ hands: { a: [card("x", CardType.Number, Color.Blue, 3)], b: [], c: [] } });
+		// Top card in setup is Red 9; pushed drawn card is Blue 5 (unplayable)
+		s.drawPile.push(card("unplayable", CardType.Number, Color.Blue, 5));
+		const next = applyAction(s, "a", { type: ActionType.Draw });
+		expect(next.drawnCardId).toBeNull();
+		expect(next.order[next.currentIndex]).toBe("b");
 	});
 
 	test("cannot pass without drawing first", () => {
@@ -750,7 +760,7 @@ describe("new cards: Snatch", () => {
 });
 
 describe("new cards: Shield", () => {
-	test("shield can be used anytime to absorb pending draws", () => {
+	test("shield can only be used during turn to absorb pending draws and advance turn", () => {
 		let s = setup({
 			hands: {
 				a: [
@@ -761,45 +771,53 @@ describe("new cards: Shield", () => {
 					card("shld", CardType.Shield, SpecialColor.Wild),
 					card("b1", CardType.Number, Color.Blue, 1),
 				],
-				c: [],
+				c: [card("c1", CardType.Number, Color.Blue, 2)],
 			},
 		});
+
+		// Player B cannot use Shield out of turn
+		expect(() =>
+			applyAction(s, "b", { type: ActionType.Play, cardId: "shld" }),
+		).toThrow("It is not your turn");
 
 		// Player A plays +2
 		s = applyAction(s, "a", { type: ActionType.Play, cardId: "d2" });
 		expect(s.pendingDraw).toBe(2);
 		expect(s.order[s.currentIndex]).toBe("b");
 
-		// Player B uses Shield card to absorb pending draw
-		s = applyAction(s, "b", { type: ActionType.PlayShield, cardId: "shld" });
+		// Player B uses Shield card on their turn to absorb pending draw
+		s = applyAction(s, "b", { type: ActionType.Play, cardId: "shld" });
 		expect(s.pendingDraw).toBe(0); // absorbed!
-		expect(s.order[s.currentIndex]).toBe("b"); // still player B's turn to play!
+		expect(s.hands.b!.length).toBe(1);
+		expect(s.order[s.currentIndex]).toBe("c"); // advances turn to player C!
 	});
 
-	test("shield protects against skip", () => {
+	test("shield played on own turn gives shield buff until consumed", () => {
 		let s = setup({
 			hands: {
 				a: [
-					card("sk", CardType.Skip, Color.Red),
-					card("extra_a", CardType.Number, Color.Red, 1),
+					card("shld", CardType.Shield, SpecialColor.Wild),
+					card("a1", CardType.Number, Color.Red, 1),
 				],
 				b: [
-					card("shld", CardType.Shield, SpecialColor.Wild),
+					card("sk", CardType.Skip, Color.Red),
 					card("b1", CardType.Number, Color.Blue, 1),
 				],
 				c: [card("c1", CardType.Number, Color.Green, 2)],
 			},
 		});
 
-		// Player B activates shield out of turn before A plays
-		s = applyAction(s, "b", { type: ActionType.PlayShield, cardId: "shld" });
-		expect(s.shielded.b).toBe(true);
-
-		// Player A plays Skip targeting B
-		s = applyAction(s, "a", { type: ActionType.Play, cardId: "sk" });
-		// B's shield absorbed the skip! Turn goes to B instead of skipping to C!
-		expect(s.shielded.b).toBe(false);
+		// Player A plays Shield on their turn
+		s = applyAction(s, "a", { type: ActionType.Play, cardId: "shld" });
+		expect(s.shielded.a).toBe(true);
 		expect(s.order[s.currentIndex]).toBe("b");
+
+		// Player B cannot use Shield out of turn
+		// Next player B plays skip against C (not A)
+		s = applyAction(s, "b", { type: ActionType.Play, cardId: "sk" });
+		// Turn skips C and goes to A
+		expect(s.order[s.currentIndex]).toBe("a");
+		expect(s.shielded.a).toBe(true);
 	});
 });
 

@@ -328,24 +328,21 @@ function ShieldIcon({ className }: { className: string }) {
     return (
         <svg viewBox="0 0 24 24" className={className} aria-hidden>
             <path
-                d="M12 2L4 5v6.5c0 5 3.5 9.5 8 10.5 4.5-1 8-5.5 8-10.5V5l-8-3z"
+                d="M12 2L4 5.5v5.5c0 5.2 3.4 10 8 11 4.6-1 8-5.8 8-11V5.5L12 2z"
                 fill="#1f6fd6"
                 stroke="#ffffff"
-                strokeWidth="2"
+                strokeWidth="1.6"
                 strokeLinejoin="round"
             />
             <path
-                d="M12 5.5l-5 2v4c0 3.5 2.2 6.8 5 7.5 2.8-.7 5-4 5-7.5v-4l-5-2z"
-                fill="#f7c400"
-                opacity="0.9"
+                d="M12 4.6l-5.5 2.4v4c0 3.7 2.3 7.2 5.5 8 3.2-.8 5.5-4.3 5.5-8v-4L12 4.6z"
+                fill="#0ea5e9"
             />
             <path
-                d="M10 11.5l2 2 3-3"
-                fill="none"
-                stroke="#111116"
-                strokeWidth="2"
+                d="M12 7.5v8.5"
+                stroke="#ffffff"
+                strokeWidth="1.5"
                 strokeLinecap="round"
-                strokeLinejoin="round"
             />
         </svg>
     );

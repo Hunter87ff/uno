@@ -95,7 +95,7 @@ Run one package's tests: `bun test shared` or `bun test server`.
 - Players may draw a card on their turn even if they have playable cards. Once drawn, the player may play the drawn card or pass.
 - Pending draws (Draw Two / Wild Draw Four) force the target to draw and lose their turn.
 - UNO: `uno: true` on the play that leaves one card. Otherwise anyone may `catchUno` before the next action (+2).
-- House rule `stacking` (default off): Draw Two may be answered with Draw Two.
+- House rule `stacking` (default on): Draw Two and plus cards may be answered with a same or higher plus card.
 - Scoring: round winner gets the face value of number cards and 20 per action card and 50 per wild left in opponents'
   hands. Game ends at `targetScore` (default 500).
 - Reverse with two players acts as Skip. Winning card's effect is not applied (the round is over).
@@ -144,11 +144,24 @@ Run one package's tests: `bun test shared` or `bun test server`.
 
 ## Agent state
 
-_Last updated: 2026-11-09 (refined game UI to exactly match target design: curved background ambient neon sweeps, dedicated SVG fanned mini UNO cards in opponent pods, oval emerald felt table with cyan-emerald neon rim, clean top header bar with double card logo and action pills, and bottom hand dock with pagination and sparkle playable badge)._
+_Last updated: 2026-11-10 (automatically pass/skip turn when a drawn card is unplayable)._
 
 ### Done
 
 - Bun workspace scaffold (`shared`, `server`, `client`).
+- Automatically pass/skip turn upon drawing if the drawn card is unplayable:
+    - Updated `applyAction(..., ActionType.Draw)` in [engine.ts](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine.ts) so that if the drawn card is not playable (`!isPlayable(s, pid, card)`), the turn auto-passes immediately without requiring the player to click Pass.
+    - Added unit test in [engine.test.ts](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine.test.ts).
+- Made room code copyable on click with visual feedback:
+    - In [Lobby.tsx](file:///home/hunter87/Documents/projects/games/uno/client/src/components/Lobby.tsx), clicking the large hero room code copies the code directly to clipboard with a `✓ Copied` feedback badge.
+    - In [Game.tsx](file:///home/hunter87/Documents/projects/games/uno/client/src/components/Game.tsx), clicking the room code pill in the top header or in the mobile game menu copies the code directly to clipboard.
+- Enabled plus card stacking rule by default in [DEFAULT_RULES](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine.ts).
+- Standardized **Shield Card** gameplay and presentation:
+    - **Turn-Only Restriction**: Playing a Shield now enforces standard turn order (`requireTurn(s, playerId)`) in [engine.ts](file:///home/hunter87/Desktop/projects/games/uno/shared/src/engine.ts). It cannot be played out of turn.
+    - **Turn Play Effects**: When played on a player's turn, it absorbs any pending draw penalty (`s.pendingDraw = 0`) if present, or grants a one-action shield buff (`s.shielded[pid] = true`). Playing a Shield advances the turn to the next player (or uses 1 extra play if Double Trouble was active).
+    - **Removed Special Identifiers & Bypass**: Removed the separate HUD `🛡 Shield` quick button and `shieldInHand` logic from [Game.tsx](file:///home/hunter87/Desktop/projects/games/uno/client/src/components/Game.tsx). Shield cards in hand now behave like all other power cards (playable only when legally highlighted, played directly via `ActionType.Play`).
+    - **Ordinary Card Visuals**: Refined [Card.tsx](file:///home/hunter87/Desktop/projects/games/uno/client/src/components/Card.tsx) with clean vector SVG artwork matching other power cards like Double Trouble, Reverse, and Wild Plus cards.
+    - **Updated Room Settings Copy**: Clarified description in [RoomSettingsModal.tsx](file:///home/hunter87/Desktop/projects/games/uno/client/src/components/RoomSettingsModal.tsx) to "Playable on your turn."
 - Fixed Wild Draw 4 (+4), Wild +6, Wild +10, and Double Trouble card rendering: replaced SVG `<filter id="...">` references that failed to resolve in browsers with pure vector artwork and CSS drop shadows, added explicit `z-10` layer ordering over the white card oval, and updated card width classes (`w-22`) for reliable CSS compilation.
 - Modularized domain enums into `shared/src/types.ts`.
 - Complete game UI overhaul ("less like a website, more like a game"):

@@ -31,6 +31,7 @@ export function Lobby({
 	onChangeLayoutMode,
 }: LobbyProps) {
 	const [copied, setCopied] = useState(false);
+	const [codeCopied, setCodeCopied] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 
 	const isHost = room.hostId === room.you;
@@ -56,6 +57,16 @@ export function Lobby({
 		}
 	};
 
+	const copyCode = async () => {
+		try {
+			await navigator.clipboard.writeText(room.code);
+			setCodeCopied(true);
+			setTimeout(() => setCodeCopied(false), 1500);
+		} catch {
+			// Clipboard may be unavailable (insecure origin)
+		}
+	};
+
 	const updateRules = (partial: Partial<Rules>) =>
 		send({ type: ClientMessageType.Settings, rules: partial });
 
@@ -71,14 +82,7 @@ export function Lobby({
 			<header className="flex items-center justify-between px-6 py-4">
 				<Logo size="sm" />
 				<div className="flex items-center gap-3">
-					<Button
-						variant="secondary"
-						className="px-3.5 py-1.5 text-xs font-bold ring-white/20 hover:bg-white/20"
-						onClick={() => setSettingsOpen(true)}
-					>
-						⚙ Room Settings
-					</Button>
-					<Badge tone={connected ? "green" : "red"}>
+				<Badge tone={connected ? "green" : "red"}>
 						<span
 							className={`size-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-rose-400"}`}
 						/>
@@ -104,12 +108,20 @@ export function Lobby({
 						<p className="text-xs font-bold tracking-[0.3em] text-white/50 uppercase">
 							Room code
 						</p>
-						<p
-							className="text-gradient font-mono text-6xl font-black tracking-[0.2em] sm:text-7xl"
+						<button
+							type="button"
+							onClick={copyCode}
+							title="Click to copy room code"
+							className="group relative flex items-center justify-center gap-3 rounded-2xl px-5 py-2 transition-all hover:bg-white/[0.06] active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
 							data-testid="room-code"
 						>
-							{room.code}
-						</p>
+							<span className="text-gradient font-mono text-6xl font-black tracking-[0.2em] sm:text-7xl transition-transform group-hover:scale-105">
+								{room.code}
+							</span>
+							<span className="rounded-lg bg-white/10 px-2 py-1 text-xs font-semibold text-white/70 backdrop-blur-sm transition group-hover:bg-white/20 group-hover:text-white">
+								{codeCopied ? "✓ Copied" : "⧉ Copy"}
+							</span>
+						</button>
 						<div className="flex flex-wrap items-center justify-center gap-3">
 							<Button variant="secondary" onClick={copy}>
 								{copied ? "✓ Copied" : "⧉ Copy invite link"}
