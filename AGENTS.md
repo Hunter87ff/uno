@@ -27,7 +27,16 @@ package.json          Bun workspace root (workspaces: shared, server, client)
 tsconfig.base.json    Shared TS settings; each package extends it
 shared/src/
   cards.ts            Card model, 108-card deck, shuffle, card points
-  engine.ts           Rules: startRound, applyAction, suggestAction, viewFor, playError, roundPoints
+  engine/             Rules, one file per concern; index.ts re-exports the public API only
+    types.ts          Rules, CARDS_PER_PLAYER, DEFAULT_RULES, GameState, Action, PlayerInfo
+    errors.ts         GameError
+    constants.ts      LOG_LIMIT, LABELS, DRAW_PENALTY, FORBIDDEN_STARTING_CARDS
+    helpers.ts        plusValue, describeCard and shared state helpers (draw, elimination, shield)
+    legality.ts       playError (playability checks)
+    lifecycle.ts      startRound, roundPoints
+    actions.ts        applyAction and its action handlers, suggestAction, applyCardEffects
+    view.ts           PublicRound / viewFor (per-viewer snapshot)
+    index.ts          Public engine API; internals are not re-exported
   protocol.ts         WebSocket/REST message types, room view, close codes, limits
   engine.test.ts      Rule-level unit tests
   fuzz.test.ts        200 randomized full games checking invariants (card conservation etc.)
@@ -155,6 +164,9 @@ _Last updated: 2026-11-10 (engine refactor: readable state names, per-behaviour 
   without behaviour changes: `state`/`playerId` naming throughout, DRAW_PENALTY and FORBIDDEN_STARTING_CARDS tables,
   `absorbWithShield`, `resolveChosenColor`, `swapAllHands`, `performSnatch`, and per-card effects extracted to
   `applyCardEffects` (no more ~70-line switch in `doPlay`). Exports, rule behaviour, and error message wording unchanged.
+- Modularized the engine into [shared/src/engine/](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine/)
+  (types, errors, constants, helpers, legality, lifecycle, actions, view) with `index.ts` re-exporting the same public
+  API, so `@uno/shared` consumers and tests are unaffected. No module cycles; behaviour unchanged.
 - Bun workspace scaffold (`shared`, `server`, `client`).
 - Automatically pass/skip turn upon drawing if the drawn card is unplayable:
     - Updated `applyAction(..., ActionType.Draw)` in [engine.ts](file:///home/hunter87/Documents/projects/games/uno/shared/src/engine.ts) so that if the drawn card is not playable (`!isPlayable(s, pid, card)`), the turn auto-passes immediately without requiring the player to click Pass.
